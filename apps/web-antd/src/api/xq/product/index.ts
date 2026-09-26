@@ -1,0 +1,76 @@
+import type { PageParam, PageResult } from '@vben/request';
+
+import { requestClient } from '#/api/request';
+
+export namespace XqProductApi {
+  export interface Product {
+    id?: string;
+    sku: string;
+    itemCode?: string;
+    name: string;
+    categoryName?: string;
+    gigaCategoryId?: number;
+    imageUrl?: string;
+    imageUrls?: string[];
+    imageCount?: number;
+    description?: string;
+    qtyAvailable?: number;
+    supplierCode?: string;
+    supplierName?: string;
+    listedTag?: string;
+    price?: number;
+    exclusivePrice?: number;
+    discountedPrice?: number;
+    currency?: string;
+    status: number;
+    remark?: string;
+    createTime?: string;
+  }
+
+  export interface CategoryNode {
+    id: number;
+    gigaId: number;
+    parentId?: number;
+    name: string;
+    level: number;
+    sortOrder?: number;
+    imagePath?: string;
+    pathIds?: string;
+    pathNames?: string;
+    href?: string;
+    children?: CategoryNode[];
+  }
+}
+
+export function getXqProductPage(params: PageParam) {
+  return requestClient.get<PageResult<XqProductApi.Product>>(
+    '/xq/product/page',
+    {
+      params,
+    },
+  );
+}
+
+export function getXqProduct(id: string) {
+  return requestClient.get<XqProductApi.Product>(`/xq/product/get?id=${id}`);
+}
+
+export function createXqProduct(data: XqProductApi.Product) {
+  return requestClient.post('/xq/product/create', data);
+}
+
+export function updateXqProduct(data: XqProductApi.Product) {
+  return requestClient.put('/xq/product/update', data);
+}
+
+export function deleteXqProduct(id: number | string) {
+  return requestClient.delete(`/xq/product/delete?id=${id}`);
+}
+
+export function getXqCategoryTree() {
+  return requestClient.get<XqProductApi.CategoryNode[]>('/xq/category/tree');
+}
+
+export function getXqCategoryLevel1() {
+  return requestClient.get<XqProductApi.CategoryNode[]>('/xq/category/level1');
+}
