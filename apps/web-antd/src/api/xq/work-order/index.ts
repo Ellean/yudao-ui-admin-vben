@@ -9,13 +9,34 @@ export namespace XqWorkOrderApi {
     sourceId?: number;
     externalSku?: string;
     title?: string;
+    coverUrl?: string;
+    categoryName?: string;
+    gigaCategoryId?: number;
     status: number;
     contentTitle?: string;
     contentSellingPoints?: string;
+    generatedImageUrl?: string;
     productId?: number;
     productSku?: string;
     assigneeUserId?: number;
+    copyUserId?: number;
+    imageUserId?: number;
+    listingPlatformId?: string;
+    listingShopId?: string;
+    workflowPhase?: string;
     createTime?: string;
+  }
+
+  export interface DispatchItem {
+    sku: string;
+    title?: string;
+    coverUrl?: string;
+    categoryName?: string;
+    gigaCategoryId?: number;
+  }
+
+  export interface DispatchReq {
+    items: DispatchItem[];
   }
 
   export interface CompleteReq {
@@ -24,9 +45,29 @@ export namespace XqWorkOrderApi {
     productName: string;
     categoryName?: string;
   }
+
+  export interface PageQuery extends PageParam {
+    no?: string;
+    title?: string;
+    externalSku?: string;
+    keyword?: string;
+    status?: number;
+    gigaCategoryId?: number;
+    copyUserId?: number;
+    imageUserId?: number;
+    copyReady?: boolean;
+    workflowPhase?: string;
+  }
+
+  export interface AssignImageReq {
+    ids: number[];
+    imageUserId: number;
+    listingPlatformId?: string;
+    listingShopId?: string;
+  }
 }
 
-export function getXqWorkOrderPage(params: PageParam) {
+export function getXqWorkOrderPage(params: XqWorkOrderApi.PageQuery) {
   return requestClient.get<PageResult<XqWorkOrderApi.WorkOrder>>(
     '/xq/work-order/page',
     { params },
@@ -39,8 +80,40 @@ export function getXqWorkOrder(id: number) {
   );
 }
 
+export function dispatchXqWorkOrder(data: XqWorkOrderApi.DispatchReq) {
+  return requestClient.post<XqWorkOrderApi.WorkOrder[]>(
+    '/xq/work-order/dispatch',
+    data,
+  );
+}
+
 export function updateXqWorkOrder(data: Partial<XqWorkOrderApi.WorkOrder>) {
   return requestClient.put('/xq/work-order/update', data);
+}
+
+export function generateXqWorkOrderCopy(id: number) {
+  return requestClient.post<XqWorkOrderApi.WorkOrder>(
+    `/xq/work-order/generate-copy?id=${id}`,
+  );
+}
+
+export function batchGenerateXqWorkOrderCopy(ids: number[]) {
+  return requestClient.post<XqWorkOrderApi.WorkOrder[]>(
+    '/xq/work-order/batch-generate-copy',
+    { ids },
+  );
+}
+
+export function batchAssignXqWorkOrderImage(
+  data: XqWorkOrderApi.AssignImageReq,
+) {
+  return requestClient.post<number>('/xq/work-order/batch-assign-image', data);
+}
+
+export function generateXqWorkOrderImage(id: number) {
+  return requestClient.post<XqWorkOrderApi.WorkOrder>(
+    `/xq/work-order/generate-image?id=${id}`,
+  );
 }
 
 export function completeXqWorkOrder(data: XqWorkOrderApi.CompleteReq) {

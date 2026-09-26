@@ -14,7 +14,7 @@ import { useCompleteFormSchema } from '../data';
 
 const emit = defineEmits(['success']);
 const rowData = ref<XqWorkOrderApi.WorkOrder>();
-const title = computed(() => `完成入库 ${rowData.value?.no || ''}`);
+const title = computed(() => `上架 ${rowData.value?.no || ''}`);
 
 const [Form, formApi] = useVbenForm({
   commonConfig: { componentProps: { class: 'w-full' } },
@@ -33,7 +33,7 @@ const [Modal, modalApi] = useVbenModal({
       const productId = await completeXqWorkOrder(data);
       await modalApi.close();
       emit('success');
-      message.success(`已入库，品库 ID=${productId}`);
+      message.success(`已上架，品库 ID=${productId}`);
     } finally {
       modalApi.unlock();
     }
@@ -49,7 +49,7 @@ const [Modal, modalApi] = useVbenModal({
       id: row.id,
       productSku: row.externalSku ? `SKU-${row.externalSku}` : '',
       productName: row.contentTitle || row.title || '',
-      categoryName: '',
+      categoryName: row.categoryName || '',
     });
   },
 });

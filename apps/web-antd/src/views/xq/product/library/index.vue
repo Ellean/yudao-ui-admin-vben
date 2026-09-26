@@ -2,11 +2,14 @@
 import type { XqProductApi } from '#/api/xq/product';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
 import { IconifyIcon } from '@vben/icons';
 
 import {
+  Button,
+  Checkbox,
   Empty,
   Image,
   Input,
@@ -22,6 +25,9 @@ import {
   getXqProduct,
   getXqProductPage,
 } from '#/api/xq/product';
+import { dispatchXqWorkOrder } from '#/api/xq/work-order';
+
+const router = useRouter();
 
 const loading = ref(false);
 const catLoading = ref(false);
@@ -44,6 +50,67 @@ const pageSize = ref(20);
 const detailOpen = ref(false);
 const detailLoading = ref(false);
 const detail = ref<null | XqProductApi.Product>(null);
+/** 勾选待下发：key = sku/itemCode */
+const selectedMap = ref<Record<string, XqProductApi.Product>>({});
+const dispatching = ref(false);
+
+const selectedList = computed(() => Object.values(selectedMap.value));
+const selectedCount = computed(() => selectedList.value.length);
+
+function productKey(item: XqProductApi.Product) {
+  return item.itemCode || item.sku || String(item.id || '');
+}
+
+function isSelected(item: XqProductApi.Product) {
+  const key = productKey(item);
+  return Boolean(key && selectedMap.value[key]);
+}
+
+function toggleSelect(item: XqProductApi.Product, checked?: boolean) {
+  const key = productKey(item);
+  if (!key) return;
+  const on = checked === undefined ? !selectedMap.value[key] : checked;
+  selectedMap.value = on
+    ? { ...selectedMap.value, [key]: item }
+    : Object.fromEntries(
+        Object.entries(selectedMap.value).filter(([k]) => k !== key),
+      );
+}
+
+function clearSelection() {
+  selectedMap.value = {};
+}
+
+async function dispatchSelected(extra?: XqProductApi.Product) {
+  const map = { ...selectedMap.value };
+  if (extra) {
+    const key = productKey(extra);
+    if (key) map[key] = extra;
+  }
+  const items = Object.values(map).map((p) => ({
+    sku: productKey(p),
+    title: p.name || productKey(p),
+    coverUrl: p.imageUrl,
+    categoryName: p.categoryName,
+    gigaCategoryId: p.gigaCategoryId,
+  }));
+  if (items.length === 0) {
+    message.warning('请先勾选要跑的产品');
+    return;
+  }
+  dispatching.value = true;
+  try {
+    const list = await dispatchXqWorkOrder({ items });
+    message.success(`已下发 ${list?.length ?? items.length} 个任务到工作台`);
+    clearSelection();
+    detailOpen.value = false;
+    await router.push('/xq-product/workspace/work-order');
+  } catch (error: any) {
+    message.error(error?.message || '下发失败');
+  } finally {
+    dispatching.value = false;
+  }
+}
 
 const l2List = computed(() => browseL1.value?.children || []);
 const l3List = computed(() => browseL2.value?.children || []);
@@ -233,6 +300,15 @@ onMounted(async () => {
           enter-button="搜索"
           @search="handleSearch"
         />
+        <Button
+          type="primary"
+          :disabled="selectedCount === 0"
+          :loading="dispatching"
+          @click="dispatchSelected()"
+        >
+          下发工作台{{ selectedCount ? ` (${selectedCount})` : '' }}
+        </Button>
+        <Button v-if="selectedCount" @click="clearSelection">清空选择</Button>
       </div>
 
       <!-- Giga 三列级联分类：默认收起 -->
@@ -316,7 +392,8 @@ onMounted(async () => {
       </div>
 
       <div class="xq-section-title">
-        产品
+        选品库
+        <span class="xq-path">· 勾选后下发到工作台做文案 / 图片 / 上架</span>
         <span v-if="filterL1" class="xq-path">
           ·
           {{
@@ -333,8 +410,15 @@ onMounted(async () => {
             v-for="item in products"
             :key="item.id"
             class="xq-product-card"
+            :class="{ selected: isSelected(item) }"
             @click="openDetail(item)"
           >
+            <div
+              class="xq-card-check"
+              @click.stop="toggleSelect(item, !isSelected(item))"
+            >
+              <Checkbox :checked="isSelected(item)" />
+            </div>
             <div class="xq-card-cover">
               <Image
                 :src="item.imageUrl || undefined"
@@ -403,10 +487,12 @@ onMounted(async () => {
     <Modal
       v-model:open="detailOpen"
       :title="detail?.name || '产品详情'"
-      :footer="null"
       width="920px"
       destroy-on-close
       class="xq-detail-modal"
+      ok-text="下发工作台"
+      :confirm-loading="dispatching"
+      @ok="detail && dispatchSelected(detail)"
     >
       <Spin :spinning="detailLoading">
         <div v-if="detail" class="xq-detail">
@@ -718,6 +804,7 @@ onMounted(async () => {
 }
 
 .xq-product-card {
+  position: relative;
   overflow: hidden;
   cursor: pointer;
   background: #fff;
@@ -725,12 +812,29 @@ onMounted(async () => {
   border-radius: 12px;
   transition:
     box-shadow 0.15s ease,
-    transform 0.15s ease;
+    transform 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .xq-product-card:hover {
   box-shadow: 0 8px 24px rgb(0 0 0 / 8%);
   transform: translateY(-2px);
+}
+
+.xq-product-card.selected {
+  border-color: #1677ff;
+  box-shadow: 0 6px 18px rgb(22 119 255 / 12%);
+}
+
+.xq-card-check {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  padding: 2px 4px;
+  line-height: 1;
+  background: rgb(255 255 255 / 92%);
+  border-radius: 6px;
 }
 
 .xq-card-cover {
