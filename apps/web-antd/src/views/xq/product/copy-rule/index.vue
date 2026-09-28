@@ -14,6 +14,7 @@ import {
   Select,
   Spin,
   Switch,
+  Tabs,
   Textarea,
 } from 'ant-design-vue';
 
@@ -23,8 +24,31 @@ import {
   saveXqCopyRule,
 } from '#/api/xq/listing';
 
+type SectionKey = 'description' | 'feature' | 'title';
+
+interface SectionRule {
+  hint: string;
+  minLen: number;
+  maxLen: number;
+  /** 卖点：标题段 / 内容段字数 */
+  titleMaxLen?: number;
+  contentMaxLen?: number;
+  noPunctuation: boolean;
+  segmentEndPeriodOnly: boolean;
+  boldLeadTitle: boolean;
+}
+
+interface ModeRule {
+  splitTitleContent: boolean;
+  separator: string;
+  requireColon: boolean;
+  titleHint: string;
+}
+
 const loading = ref(false);
 const saving = ref(false);
+const showRawJson = ref(false);
+const activeSection = ref<SectionKey>('title');
 const platforms = ref<XqListingApi.Platform[]>([]);
 const rules = ref<XqListingApi.CopyRule[]>([]);
 const activePlatformId = ref<string>('');
@@ -33,13 +57,48 @@ const form = reactive({
   name: '',
   enabled: true,
   remark: '',
-  titleMaxLen: 200,
-  descriptionMaxLen: 2000,
-  featureMaxLen: 200,
   defaultFeatureCount: 5 as number,
   generateTitle: true,
+  /** 描述版式（原库 descriptionLayout） */
+  descMode: 'amazonLong',
+  specsHeading: 'Product Specifications:',
+  notesHeading: 'Important Notes:',
+  minSpecItems: 5,
+  maxSpecItems: 12,
+  includeImportantNotes: false,
+  sections: {
+    title: emptySection(200),
+    description: emptySection(2000),
+    feature: emptySection(500),
+  } as Record<SectionKey, SectionRule>,
+  mode5: emptyMode(true),
+  mode8: emptyMode(false),
+  /** 保留未映射的扩展字段 */
+  extra: {} as Record<string, any>,
   configJson: '',
 });
+
+function emptySection(maxLen: number): SectionRule {
+  return {
+    hint: '',
+    minLen: 0,
+    maxLen,
+    titleMaxLen: 60,
+    contentMaxLen: 400,
+    noPunctuation: false,
+    segmentEndPeriodOnly: false,
+    boldLeadTitle: false,
+  };
+}
+
+function emptyMode(requireColon: boolean): ModeRule {
+  return {
+    splitTitleContent: requireColon,
+    separator: ': ',
+    requireColon,
+    titleHint: 'Short Benefit Title',
+  };
+}
 
 const activeRule = computed(() =>
   rules.value.find(
@@ -47,16 +106,19 @@ const activeRule = computed(() =>
   ),
 );
 
-const platformOptions = computed(() => {
-  const opts = [
-    { label: '通用规则', value: '' },
-    ...platforms.value.map((p) => ({
-      label: `${p.name} (${p.code})`,
-      value: p.id,
-    })),
-  ];
-  return opts;
-});
+const platformOptions = computed(() => [
+  { label: '通用规则', value: '' },
+  ...platforms.value.map((p) => ({
+    label: `${p.name} (${p.code})`,
+    value: p.id,
+  })),
+]);
+
+const sectionMeta: Array<{ desc: string; key: SectionKey; label: string }> = [
+  { key: 'title', label: '标题', desc: '商品标题文案' },
+  { key: 'description', label: '描述', desc: '长描述 / 规格说明' },
+  { key: 'feature', label: '卖点', desc: 'Bullet / Feature 条目' },
+];
 
 function parseConfig(json?: string) {
   try {
@@ -68,47 +130,144 @@ function parseConfig(json?: string) {
 
 function fillForm(rule?: XqListingApi.CopyRule) {
   const cfg = parseConfig(rule?.configJson);
+  const limits = cfg.limits || {};
+  const punct = cfg.punctuation || {};
+  const bold = cfg.boldLeadTitle || {};
+  const layout = cfg.descriptionLayout || {};
+  const hints = cfg.hints || {};
+
   form.name = rule?.name || '文案生成规则';
   form.enabled = rule?.enabled !== false;
   form.remark = rule?.remark || '';
-  form.titleMaxLen = Number(cfg?.limits?.titleMaxLen || 200);
-  form.descriptionMaxLen = Number(cfg?.limits?.descriptionMaxLen || 2000);
-  form.featureMaxLen = Number(cfg?.limits?.featureMaxLen || 200);
-  form.defaultFeatureCount = Number(cfg?.defaultFeatureCount || 5);
-  form.generateTitle = cfg?.generateTitle !== false;
-  form.configJson =
-    rule?.configJson ||
-    JSON.stringify(
-      {
-        defaultFeatureCount: form.defaultFeatureCount,
-        allowedFeatureCounts: [5, 8],
-        generateTitle: form.generateTitle,
-        limits: {
-          titleMaxLen: form.titleMaxLen,
-          descriptionMaxLen: form.descriptionMaxLen,
-          featureMaxLen: form.featureMaxLen,
-        },
-      },
-      null,
-      2,
-    );
+  form.defaultFeatureCount = Number(cfg.defaultFeatureCount || 5);
+  form.generateTitle = cfg.generateTitle !== false;
+
+  form.sections.title = {
+    hint: String(hints.title || cfg.titleHint || ''),
+    minLen: Number(limits.titleMinLen || 0),
+    maxLen: Number(limits.titleMaxLen || 200),
+    noPunctuation: Boolean(punct.title?.noPunctuation),
+    segmentEndPeriodOnly: Boolean(punct.title?.segmentEndPeriodOnly),
+    boldLeadTitle: Boolean(bold.title),
+  };
+  form.sections.description = {
+    hint: String(hints.description || cfg.descriptionHint || ''),
+    minLen: Number(limits.descriptionMinLen || 0),
+    maxLen: Number(limits.descriptionMaxLen || 2000),
+    noPunctuation: Boolean(punct.description?.noPunctuation),
+    segmentEndPeriodOnly: Boolean(punct.description?.segmentEndPeriodOnly),
+    boldLeadTitle: Boolean(bold.description),
+  };
+  form.sections.feature = {
+    hint: String(hints.feature || cfg.featureHint || ''),
+    minLen: Number(limits.featureMinLen || 0),
+    maxLen: Number(limits.featureMaxLen || 500),
+    titleMaxLen: Number(limits.featureTitleMaxLen || 60),
+    contentMaxLen: Number(limits.featureContentMaxLen || 400),
+    noPunctuation: Boolean(punct.feature?.noPunctuation),
+    segmentEndPeriodOnly: Boolean(punct.feature?.segmentEndPeriodOnly),
+    boldLeadTitle: Boolean(bold.feature),
+  };
+
+  form.descMode = String(layout.mode || 'amazonLong');
+  form.specsHeading = String(layout.specsHeading || 'Product Specifications:');
+  form.notesHeading = String(layout.notesHeading || 'Important Notes:');
+  form.minSpecItems = Number(layout.minSpecItems || 5);
+  form.maxSpecItems = Number(layout.maxSpecItems || 12);
+  form.includeImportantNotes = Boolean(layout.includeImportantNotes);
+
+  const m5 = cfg.mode5 || {};
+  const m8 = cfg.mode8 || {};
+  form.mode5 = {
+    splitTitleContent: m5.splitTitleContent !== false,
+    separator: String(m5.separator ?? ': '),
+    requireColon: m5.requireColon !== false,
+    titleHint: String(m5.titleHint || 'Short Benefit Title'),
+  };
+  form.mode8 = {
+    splitTitleContent: Boolean(m8.splitTitleContent),
+    separator: String(m8.separator ?? ': '),
+    requireColon: Boolean(m8.requireColon),
+    titleHint: String(m8.titleHint || 'Short Benefit Title'),
+  };
+
+  // 保留未在表单中编辑的顶层扩展字段
+  const known = new Set([
+    'allowedFeatureCounts',
+    'boldLeadTitle',
+    'defaultFeatureCount',
+    'descriptionHint',
+    'descriptionLayout',
+    'featureHint',
+    'generateTitle',
+    'hints',
+    'limits',
+    'mode5',
+    'mode8',
+    'punctuation',
+    'titleHint',
+  ]);
+  form.extra = {};
+  for (const [k, v] of Object.entries(cfg)) {
+    if (!known.has(k)) form.extra[k] = v;
+  }
+
+  syncJsonFromFields();
 }
 
 function syncJsonFromFields() {
-  let cfg: Record<string, any>;
-  try {
-    cfg = form.configJson ? JSON.parse(form.configJson) : {};
-  } catch {
-    cfg = {};
-  }
-  cfg.defaultFeatureCount = form.defaultFeatureCount;
-  cfg.allowedFeatureCounts = cfg.allowedFeatureCounts || [5, 8];
-  cfg.generateTitle = form.generateTitle;
-  cfg.limits = {
-    ...cfg.limits,
-    titleMaxLen: form.titleMaxLen,
-    descriptionMaxLen: form.descriptionMaxLen,
-    featureMaxLen: form.featureMaxLen,
+  const t = form.sections.title;
+  const d = form.sections.description;
+  const f = form.sections.feature;
+  const cfg: Record<string, any> = {
+    ...form.extra,
+    defaultFeatureCount: form.defaultFeatureCount,
+    allowedFeatureCounts: [5, 8],
+    generateTitle: form.generateTitle,
+    hints: {
+      title: t.hint || '',
+      description: d.hint || '',
+      feature: f.hint || '',
+    },
+    limits: {
+      titleMinLen: t.minLen,
+      titleMaxLen: t.maxLen,
+      descriptionMinLen: d.minLen,
+      descriptionMaxLen: d.maxLen,
+      featureMinLen: f.minLen,
+      featureMaxLen: f.maxLen,
+      featureTitleMaxLen: f.titleMaxLen ?? 60,
+      featureContentMaxLen: f.contentMaxLen ?? 400,
+    },
+    punctuation: {
+      title: {
+        noPunctuation: t.noPunctuation,
+        segmentEndPeriodOnly: t.segmentEndPeriodOnly,
+      },
+      description: {
+        noPunctuation: d.noPunctuation,
+        segmentEndPeriodOnly: d.segmentEndPeriodOnly,
+      },
+      feature: {
+        noPunctuation: f.noPunctuation,
+        segmentEndPeriodOnly: f.segmentEndPeriodOnly,
+      },
+    },
+    boldLeadTitle: {
+      title: t.boldLeadTitle,
+      description: d.boldLeadTitle,
+      feature: f.boldLeadTitle,
+    },
+    mode5: { ...form.mode5 },
+    mode8: { ...form.mode8 },
+    descriptionLayout: {
+      mode: form.descMode,
+      specsHeading: form.specsHeading,
+      notesHeading: form.notesHeading,
+      minSpecItems: form.minSpecItems,
+      maxSpecItems: form.maxSpecItems,
+      includeImportantNotes: form.includeImportantNotes,
+    },
   };
   form.configJson = JSON.stringify(cfg, null, 2);
 }
@@ -127,9 +286,6 @@ async function loadAll() {
     ]);
     platforms.value = p || [];
     rules.value = r || [];
-    if (!activePlatformId.value && platforms.value[0]) {
-      activePlatformId.value = platforms.value[0].id;
-    }
     fillForm(activeRule.value);
   } catch (error: any) {
     message.error(error?.message || '加载平台/规则失败（请确认原库已配置）');
@@ -174,8 +330,9 @@ onMounted(loadAll);
         <div>
           <h2>文案管理</h2>
           <p>
-            按平台配置文案规则与内容限制，平台/店铺数据来自原库
-            xq_finance_test。
+            每个文案段（标题 / 描述 /
+            卖点）单独配置提示规则、字符规则、标点规则；写入原库
+            t_giga_copy_gen_rule。
           </p>
         </div>
         <Button type="primary" :loading="saving" @click="handleSave">
@@ -217,44 +374,14 @@ onMounted(loadAll);
                 @change="(v: any) => onSelectPlatform(v)"
               />
             </div>
-            <div class="field">
-              <label>规则名称</label>
-              <Input v-model:value="form.name" />
-            </div>
-            <div class="field row">
-              <label>启用</label>
-              <Switch v-model:checked="form.enabled" />
-            </div>
-            <div class="grid-3">
+            <div class="grid-2">
               <div class="field">
-                <label>标题最大字数</label>
-                <InputNumber
-                  v-model:value="form.titleMaxLen"
-                  :min="50"
-                  :max="500"
-                  class="w-full"
-                  @change="syncJsonFromFields"
-                />
+                <label>规则名称</label>
+                <Input v-model:value="form.name" />
               </div>
-              <div class="field">
-                <label>描述最大字数</label>
-                <InputNumber
-                  v-model:value="form.descriptionMaxLen"
-                  :min="100"
-                  :max="5000"
-                  class="w-full"
-                  @change="syncJsonFromFields"
-                />
-              </div>
-              <div class="field">
-                <label>卖点单条字数</label>
-                <InputNumber
-                  v-model:value="form.featureMaxLen"
-                  :min="20"
-                  :max="500"
-                  class="w-full"
-                  @change="syncJsonFromFields"
-                />
+              <div class="field row">
+                <label>启用</label>
+                <Switch v-model:checked="form.enabled" />
               </div>
             </div>
             <div class="grid-2">
@@ -281,9 +408,255 @@ onMounted(loadAll);
               <label>备注</label>
               <Input v-model:value="form.remark" />
             </div>
+
+            <div class="section-card">
+              <div class="section-card-title">按文案段细化规则</div>
+              <Tabs v-model:active-key="activeSection" type="card" size="small">
+                <Tabs.TabPane
+                  v-for="meta in sectionMeta"
+                  :key="meta.key"
+                  :tab="meta.label"
+                >
+                  <p class="section-desc">{{ meta.desc }}</p>
+
+                  <div class="rule-block">
+                    <div class="rule-block-title">提示规则</div>
+                    <div class="field">
+                      <label>生成提示词 / Hint</label>
+                      <Textarea
+                        v-model:value="form.sections[meta.key].hint"
+                        :rows="3"
+                        :placeholder="`${meta.label}生成时的风格与要点提示`"
+                        @change="syncJsonFromFields"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="rule-block">
+                    <div class="rule-block-title">字符规则</div>
+                    <div class="grid-3">
+                      <div class="field">
+                        <label>最小字数</label>
+                        <InputNumber
+                          v-model:value="form.sections[meta.key].minLen"
+                          :min="0"
+                          :max="5000"
+                          class="w-full"
+                          @change="syncJsonFromFields"
+                        />
+                      </div>
+                      <div class="field">
+                        <label>最大字数</label>
+                        <InputNumber
+                          v-model:value="form.sections[meta.key].maxLen"
+                          :min="1"
+                          :max="8000"
+                          class="w-full"
+                          @change="syncJsonFromFields"
+                        />
+                      </div>
+                      <template v-if="meta.key === 'feature'">
+                        <div class="field">
+                          <label>卖点标题字数</label>
+                          <InputNumber
+                            v-model:value="form.sections.feature.titleMaxLen"
+                            :min="1"
+                            :max="200"
+                            class="w-full"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field">
+                          <label>卖点内容字数</label>
+                          <InputNumber
+                            v-model:value="form.sections.feature.contentMaxLen"
+                            :min="1"
+                            :max="1000"
+                            class="w-full"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <div class="rule-block">
+                    <div class="rule-block-title">标点规则</div>
+                    <div class="switch-grid">
+                      <div class="field row">
+                        <label>禁止标点</label>
+                        <Switch
+                          v-model:checked="
+                            form.sections[meta.key].noPunctuation
+                          "
+                          @change="syncJsonFromFields"
+                        />
+                      </div>
+                      <div class="field row">
+                        <label>段末仅允许句号</label>
+                        <Switch
+                          v-model:checked="
+                            form.sections[meta.key].segmentEndPeriodOnly
+                          "
+                          @change="syncJsonFromFields"
+                        />
+                      </div>
+                      <div class="field row">
+                        <label>首段标题加粗</label>
+                        <Switch
+                          v-model:checked="
+                            form.sections[meta.key].boldLeadTitle
+                          "
+                          @change="syncJsonFromFields"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <template v-if="meta.key === 'description'">
+                    <div class="rule-block">
+                      <div class="rule-block-title">描述版式</div>
+                      <div class="grid-2">
+                        <div class="field">
+                          <label>版式模式</label>
+                          <Input
+                            v-model:value="form.descMode"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field row">
+                          <label>含 Important Notes</label>
+                          <Switch
+                            v-model:checked="form.includeImportantNotes"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field">
+                          <label>规格标题</label>
+                          <Input
+                            v-model:value="form.specsHeading"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field">
+                          <label>备注标题</label>
+                          <Input
+                            v-model:value="form.notesHeading"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field">
+                          <label>规格最少条数</label>
+                          <InputNumber
+                            v-model:value="form.minSpecItems"
+                            :min="0"
+                            :max="50"
+                            class="w-full"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field">
+                          <label>规格最多条数</label>
+                          <InputNumber
+                            v-model:value="form.maxSpecItems"
+                            :min="1"
+                            :max="50"
+                            class="w-full"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-if="meta.key === 'feature'">
+                    <div class="rule-block">
+                      <div class="rule-block-title">卖点模式 5 条</div>
+                      <div class="grid-2">
+                        <div class="field">
+                          <label>标题提示</label>
+                          <Input
+                            v-model:value="form.mode5.titleHint"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field">
+                          <label>分隔符</label>
+                          <Input
+                            v-model:value="form.mode5.separator"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field row">
+                          <label>拆分标题/内容</label>
+                          <Switch
+                            v-model:checked="form.mode5.splitTitleContent"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field row">
+                          <label>必须冒号</label>
+                          <Switch
+                            v-model:checked="form.mode5.requireColon"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div class="rule-block">
+                      <div class="rule-block-title">卖点模式 8 条</div>
+                      <div class="grid-2">
+                        <div class="field">
+                          <label>标题提示</label>
+                          <Input
+                            v-model:value="form.mode8.titleHint"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field">
+                          <label>分隔符</label>
+                          <Input
+                            v-model:value="form.mode8.separator"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field row">
+                          <label>拆分标题/内容</label>
+                          <Switch
+                            v-model:checked="form.mode8.splitTitleContent"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                        <div class="field row">
+                          <label>必须冒号</label>
+                          <Switch
+                            v-model:checked="form.mode8.requireColon"
+                            @change="syncJsonFromFields"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                </Tabs.TabPane>
+              </Tabs>
+            </div>
+
             <div class="field">
-              <label>完整规则 JSON（高级）</label>
-              <Textarea v-model:value="form.configJson" :rows="14" />
+              <div class="json-head">
+                <label>完整规则 JSON</label>
+                <Button
+                  type="link"
+                  size="small"
+                  @click="showRawJson = !showRawJson"
+                >
+                  {{ showRawJson ? '收起' : '展开高级编辑' }}
+                </Button>
+              </div>
+              <Textarea
+                v-if="showRawJson"
+                v-model:value="form.configJson"
+                :rows="16"
+              />
             </div>
           </div>
         </div>
@@ -394,7 +767,7 @@ onMounted(loadAll);
 
 .grid-3 {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -408,10 +781,57 @@ onMounted(loadAll);
   width: 100%;
 }
 
+.section-card {
+  padding: 12px;
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 10px;
+}
+
+.section-card-title {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.section-desc {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.rule-block {
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+
+.rule-block-title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111;
+}
+
+.switch-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.json-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 @media (max-width: 900px) {
   .xq-rule-layout,
   .grid-3,
-  .grid-2 {
+  .grid-2,
+  .switch-grid {
     grid-template-columns: 1fr;
   }
 }

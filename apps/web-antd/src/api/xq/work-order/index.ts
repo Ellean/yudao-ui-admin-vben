@@ -41,7 +41,7 @@ export namespace XqWorkOrderApi {
 
   export interface DispatchReq {
     listingPlatformId: string;
-    listingShopId: string;
+    listingShopId?: string;
     listingCategoryId: string;
     listingPlatformName?: string;
     listingShopName?: string;

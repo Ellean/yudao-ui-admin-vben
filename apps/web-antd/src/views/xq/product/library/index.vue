@@ -184,14 +184,20 @@ async function onListingPlatformChange(id?: string) {
   if (!id) return;
   listingLoading.value = true;
   try {
-    const [shopList, catList] = await Promise.all([
-      getXqListingShops(id),
-      getXqListingCategories(id),
-    ]);
-    shops.value = shopList || [];
-    listingCategoryTree.value = catList || [];
-  } catch (error: any) {
-    message.error(error?.message || '加载店铺/分类失败');
+    // 分开拉取：分类接口未部署时不影响店铺
+    const shopRes = await getXqListingShops(id).catch((error: any) => {
+      message.error(error?.message || '加载店铺失败（原库）');
+      return [] as XqListingApi.Shop[];
+    });
+    shops.value = shopRes || [];
+    if (shops.value.length === 1) {
+      listingShopId.value = shops.value[0]!.id;
+    }
+    const catRes = await getXqListingCategories(id).catch((error: any) => {
+      message.error(error?.message || '加载平台分类失败（原库）');
+      return [] as XqListingApi.CategoryNode[];
+    });
+    listingCategoryTree.value = catRes || [];
   } finally {
     listingLoading.value = false;
   }
@@ -218,12 +224,8 @@ async function openDispatchModal(extra?: XqProductApi.Product) {
 }
 
 async function confirmDispatch() {
-  if (
-    !listingPlatformId.value ||
-    !listingShopId.value ||
-    !listingCategoryId.value
-  ) {
-    message.warning('请选择上架平台、店铺与分类');
+  if (!listingPlatformId.value || !listingCategoryId.value) {
+    message.warning('请选择上架平台与平台分类（原库）');
     return;
   }
   const map = { ...selectedMap.value };
@@ -254,7 +256,7 @@ async function confirmDispatch() {
   try {
     const list = await dispatchXqWorkOrder({
       listingPlatformId: listingPlatformId.value,
-      listingShopId: listingShopId.value,
+      listingShopId: listingShopId.value || undefined,
       listingCategoryId: listingCategoryId.value,
       listingPlatformName: platformName,
       listingShopName: shopName,
@@ -756,44 +758,56 @@ onMounted(async () => {
 
     <Modal
       v-model:open="dispatchOpen"
-      title="选择上架平台 / 店铺 / 分类"
+      title="选择上架平台 / 分类（原库）"
       ok-text="确认下发"
       :confirm-loading="dispatching"
       destroy-on-close
       @ok="confirmDispatch"
     >
       <p class="xq-dispatch-hint">
-        下发前请指定目标平台分类，工作台可按此筛选领取与处理。
+        平台与分类从原库 xq_finance_test 拉取；店铺可选（原库有则选）。
       </p>
       <Spin :spinning="listingLoading">
         <div class="xq-dispatch-form">
-          <label>上架平台</label>
+          <label>上架平台（原库）</label>
           <Select
             v-model:value="listingPlatformId"
             allow-clear
             show-search
             option-filter-prop="label"
-            placeholder="请选择平台"
+            placeholder="从原库选择平台"
             :options="platformOptions"
             @change="(v: any) => onListingPlatformChange(v)"
           />
-          <label>上架店铺</label>
+          <label>上架店铺（原库 sys_store）</label>
           <Select
             v-model:value="listingShopId"
             allow-clear
             show-search
             option-filter-prop="label"
-            placeholder="请先选平台，再选店铺"
+            :placeholder="
+              listingPlatformId
+                ? shopOptions.length
+                  ? '选择店铺'
+                  : '该平台在店铺管理中暂无店铺'
+                : '请先选平台'
+            "
             :options="shopOptions"
             :disabled="!listingPlatformId"
           />
-          <label>平台分类</label>
+          <label>平台分类（原库）</label>
           <TreeSelect
             v-model:value="listingCategoryId"
             allow-clear
             show-search
             tree-node-filter-prop="title"
-            placeholder="请选择平台分类"
+            :placeholder="
+              listingPlatformId
+                ? listingCategoryTreeData.length
+                  ? '选择平台分类'
+                  : '该平台暂无分类'
+                : '请先选平台'
+            "
             :tree-data="listingCategoryTreeData"
             :disabled="!listingPlatformId"
             style="width: 100%"

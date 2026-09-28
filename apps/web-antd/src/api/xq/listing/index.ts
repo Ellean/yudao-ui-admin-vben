@@ -37,6 +37,21 @@ export namespace XqListingApi {
     enabled?: boolean;
     remark?: string;
   }
+
+  export interface ImageRule {
+    id?: string;
+    platformId?: string;
+    platformCode?: string;
+    platformName?: string;
+    categoryId?: string;
+    categoryName?: string;
+    name: string;
+    promptText: string;
+    negativePrompt?: string;
+    configJson?: string;
+    enabled?: boolean;
+    remark?: string;
+  }
 }
 
 export function getXqListingPlatforms() {
@@ -76,4 +91,36 @@ export function saveXqCopyRule(data: {
   remark?: string;
 }) {
   return requestClient.post('/xq/listing/copy-rule', data);
+}
+
+export function getXqImageRules(platformId?: string) {
+  return requestClient.get<XqListingApi.ImageRule[]>(
+    '/xq/listing/image-rules',
+    {
+      params: { platformId: platformId || '' },
+    },
+  );
+}
+
+export function getXqImageRule(platformId?: string, categoryId?: string) {
+  return requestClient.get<XqListingApi.ImageRule>('/xq/listing/image-rule', {
+    params: {
+      platformId: platformId || '',
+      categoryId: categoryId || '',
+    },
+  });
+}
+
+export function saveXqImageRule(data: {
+  categoryId?: string;
+  categoryName?: string;
+  configJson?: string;
+  enabled?: boolean;
+  name: string;
+  negativePrompt?: string;
+  platformId?: string;
+  promptText: string;
+  remark?: string;
+}) {
+  return requestClient.post('/xq/listing/image-rule', data);
 }
