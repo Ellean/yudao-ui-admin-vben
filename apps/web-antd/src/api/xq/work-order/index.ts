@@ -23,6 +23,10 @@ export namespace XqWorkOrderApi {
     imageUserId?: number;
     listingPlatformId?: string;
     listingShopId?: string;
+    listingCategoryId?: string;
+    listingPlatformName?: string;
+    listingShopName?: string;
+    listingCategoryName?: string;
     workflowPhase?: string;
     createTime?: string;
   }
@@ -36,6 +40,12 @@ export namespace XqWorkOrderApi {
   }
 
   export interface DispatchReq {
+    listingPlatformId: string;
+    listingShopId: string;
+    listingCategoryId: string;
+    listingPlatformName?: string;
+    listingShopName?: string;
+    listingCategoryName?: string;
     items: DispatchItem[];
   }
 
@@ -57,6 +67,9 @@ export namespace XqWorkOrderApi {
     imageUserId?: number;
     copyReady?: boolean;
     workflowPhase?: string;
+    listingPlatformId?: string;
+    listingShopId?: string;
+    listingCategoryId?: string;
   }
 
   export interface AssignImageReq {

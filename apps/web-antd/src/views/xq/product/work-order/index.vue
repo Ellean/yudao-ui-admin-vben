@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import type { XqListingApi } from '#/api/xq/listing';
 import type { XqProductApi } from '#/api/xq/product';
 import type { XqWorkOrderApi } from '#/api/xq/work-order';
 
@@ -19,8 +20,14 @@ import {
   Select,
   Spin,
   Tag,
+  TreeSelect,
 } from 'ant-design-vue';
 
+import {
+  getXqListingCategories,
+  getXqListingPlatforms,
+  getXqListingShops,
+} from '#/api/xq/listing';
 import { getXqCategoryTree } from '#/api/xq/product';
 import {
   batchGenerateXqWorkOrderCopy,
@@ -72,13 +79,46 @@ const queryParams = reactive({
   keyword: '' as string | undefined,
   gigaCategoryId: undefined as number | undefined,
   status: 10 as number | undefined,
+  listingPlatformId: undefined as string | undefined,
+  listingShopId: undefined as string | undefined,
+  listingCategoryId: undefined as string | undefined,
 });
+
+const listingPlatforms = ref<XqListingApi.Platform[]>([]);
+const listingShops = ref<XqListingApi.Shop[]>([]);
+const listingCategoryTree = ref<XqListingApi.CategoryNode[]>([]);
+const filterPlatformId = ref<string | undefined>();
+const filterShopId = ref<string | undefined>();
+const filterListingCategoryId = ref<string | undefined>();
 
 const statusOptions = [
   { label: '进行中', value: 10 },
   { label: '已上架', value: 20 },
   { label: '已关闭', value: 30 },
 ];
+
+const listingPlatformOptions = computed(() =>
+  listingPlatforms.value.map((p) => ({ label: p.name, value: p.id })),
+);
+const listingShopOptions = computed(() =>
+  listingShops.value.map((s) => ({ label: s.name, value: s.id })),
+);
+const listingCategoryTreeData = computed(() =>
+  mapListingCategoryTree(listingCategoryTree.value),
+);
+
+function mapListingCategoryTree(
+  nodes: XqListingApi.CategoryNode[],
+): Array<Record<string, any>> {
+  return (nodes || []).map((n) => ({
+    title: n.name,
+    value: n.id,
+    key: n.id,
+    children: n.children?.length
+      ? mapListingCategoryTree(n.children)
+      : undefined,
+  }));
+}
 
 function selectL1(item: XqProductApi.CategoryNode) {
   browseL1.value = item;
@@ -120,6 +160,35 @@ async function loadCategories() {
   }
 }
 
+async function loadListingPlatforms() {
+  try {
+    listingPlatforms.value = (await getXqListingPlatforms()) || [];
+  } catch {
+    listingPlatforms.value = [];
+  }
+}
+
+async function onFilterPlatformChange(id?: string) {
+  filterPlatformId.value = id;
+  filterShopId.value = undefined;
+  filterListingCategoryId.value = undefined;
+  listingShops.value = [];
+  listingCategoryTree.value = [];
+  if (id) {
+    try {
+      const [shops, cats] = await Promise.all([
+        getXqListingShops(id),
+        getXqListingCategories(id),
+      ]);
+      listingShops.value = shops || [];
+      listingCategoryTree.value = cats || [];
+    } catch (error: any) {
+      message.error(error?.message || '加载店铺/分类失败');
+    }
+  }
+  handleSearch();
+}
+
 async function loadTasks() {
   loading.value = true;
   try {
@@ -130,6 +199,9 @@ async function loadTasks() {
       keyword: kw || undefined,
       status: queryParams.status,
       gigaCategoryId: queryParams.gigaCategoryId,
+      listingPlatformId: queryParams.listingPlatformId,
+      listingShopId: queryParams.listingShopId,
+      listingCategoryId: queryParams.listingCategoryId,
     });
     tasks.value = res?.list || [];
     total.value = Number(res?.total || 0);
@@ -143,6 +215,9 @@ async function loadTasks() {
 function handleSearch() {
   queryParams.keyword = keyword.value.trim() || undefined;
   queryParams.status = statusFilter.value;
+  queryParams.listingPlatformId = filterPlatformId.value;
+  queryParams.listingShopId = filterShopId.value;
+  queryParams.listingCategoryId = filterListingCategoryId.value;
   pageNo.value = 1;
   loadTasks();
 }
@@ -231,7 +306,7 @@ async function batchGenerateCopy() {
 }
 
 onMounted(async () => {
-  await loadCategories();
+  await Promise.all([loadCategories(), loadListingPlatforms()]);
   await loadTasks();
 });
 </script>
@@ -275,6 +350,38 @@ onMounted(async () => {
           class="xq-status-select"
           placeholder="状态"
           :options="statusOptions"
+          @change="handleSearch"
+        />
+        <Select
+          v-model:value="filterPlatformId"
+          allow-clear
+          show-search
+          option-filter-prop="label"
+          class="xq-listing-select"
+          placeholder="上架平台"
+          :options="listingPlatformOptions"
+          @change="(v: any) => onFilterPlatformChange(v)"
+        />
+        <Select
+          v-model:value="filterShopId"
+          allow-clear
+          show-search
+          option-filter-prop="label"
+          class="xq-listing-select"
+          placeholder="上架店铺"
+          :options="listingShopOptions"
+          :disabled="!filterPlatformId"
+          @change="handleSearch"
+        />
+        <TreeSelect
+          v-model:value="filterListingCategoryId"
+          allow-clear
+          show-search
+          tree-node-filter-prop="title"
+          class="xq-listing-tree"
+          placeholder="平台分类"
+          :tree-data="listingCategoryTreeData"
+          :disabled="!filterPlatformId"
           @change="handleSearch"
         />
         <Button
@@ -409,6 +516,33 @@ onMounted(async () => {
                   <b>{{ row.externalSku || '—' }}</b>
                 </div>
                 <div class="xq-title" :title="row.title">{{ row.title }}</div>
+                <div
+                  v-if="
+                    row.listingPlatformName ||
+                    row.listingShopName ||
+                    row.listingCategoryName
+                  "
+                  class="xq-listing-meta"
+                  :title="
+                    [
+                      row.listingPlatformName,
+                      row.listingShopName,
+                      row.listingCategoryName,
+                    ]
+                      .filter(Boolean)
+                      .join(' / ')
+                  "
+                >
+                  {{
+                    [
+                      row.listingPlatformName,
+                      row.listingShopName,
+                      row.listingCategoryName,
+                    ]
+                      .filter(Boolean)
+                      .join(' / ')
+                  }}
+                </div>
                 <div class="xq-ai-flags">
                   <span class="xq-ai-chip" :class="{ done: isCopyReady(row) }">
                     文案 {{ isCopyReady(row) ? '✓' : '1' }}
@@ -507,6 +641,22 @@ onMounted(async () => {
   flex: 1;
   min-width: 220px;
   max-width: 420px;
+}
+
+.xq-listing-select {
+  min-width: 140px;
+}
+
+.xq-listing-tree {
+  min-width: 180px;
+}
+
+.xq-listing-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
 }
 
 .xq-status-select {

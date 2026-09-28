@@ -17,6 +17,15 @@ export namespace XqListingApi {
     enabled?: boolean;
   }
 
+  export interface CategoryNode {
+    id: string;
+    name: string;
+    parentId?: string;
+    platformId?: string;
+    sortOrder?: number;
+    children?: CategoryNode[];
+  }
+
   export interface CopyRule {
     id?: string;
     platformId?: string;
@@ -38,6 +47,15 @@ export function getXqListingShops(platformId?: string) {
   return requestClient.get<XqListingApi.Shop[]>('/xq/listing/shops', {
     params: { platformId },
   });
+}
+
+export function getXqListingCategories(platformId: string) {
+  return requestClient.get<XqListingApi.CategoryNode[]>(
+    '/xq/listing/categories',
+    {
+      params: { platformId },
+    },
+  );
 }
 
 export function getXqCopyRules() {

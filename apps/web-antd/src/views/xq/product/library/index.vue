@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import type { XqListingApi } from '#/api/xq/listing';
 import type { XqProductApi } from '#/api/xq/product';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
@@ -16,10 +17,17 @@ import {
   message,
   Modal,
   Pagination,
+  Select,
   Spin,
   Tag,
+  TreeSelect,
 } from 'ant-design-vue';
 
+import {
+  getXqListingCategories,
+  getXqListingPlatforms,
+  getXqListingShops,
+} from '#/api/xq/listing';
 import {
   getXqCategoryTree,
   getXqProduct,
@@ -53,9 +61,72 @@ const detail = ref<null | XqProductApi.Product>(null);
 /** 勾选待下发：key = sku/itemCode */
 const selectedMap = ref<Record<string, XqProductApi.Product>>({});
 const dispatching = ref(false);
+const dispatchOpen = ref(false);
+const dispatchExtra = ref<null | XqProductApi.Product>(null);
+
+const platforms = ref<XqListingApi.Platform[]>([]);
+const shops = ref<XqListingApi.Shop[]>([]);
+const listingCategoryTree = ref<XqListingApi.CategoryNode[]>([]);
+const listingPlatformId = ref<string | undefined>();
+const listingShopId = ref<string | undefined>();
+const listingCategoryId = ref<string | undefined>();
+const listingLoading = ref(false);
 
 const selectedList = computed(() => Object.values(selectedMap.value));
 const selectedCount = computed(() => selectedList.value.length);
+
+const pageSelectable = computed(() =>
+  products.value.filter((p) => Boolean(productKey(p))),
+);
+const pageSelectedCount = computed(
+  () => pageSelectable.value.filter((p) => isSelected(p)).length,
+);
+const pageAllSelected = computed(
+  () =>
+    pageSelectable.value.length > 0 &&
+    pageSelectedCount.value === pageSelectable.value.length,
+);
+const pageIndeterminate = computed(
+  () =>
+    pageSelectedCount.value > 0 &&
+    pageSelectedCount.value < pageSelectable.value.length,
+);
+
+const platformOptions = computed(() =>
+  platforms.value.map((p) => ({ label: p.name, value: p.id })),
+);
+const shopOptions = computed(() =>
+  shops.value.map((s) => ({ label: s.name, value: s.id })),
+);
+const listingCategoryTreeData = computed(() =>
+  mapListingCategoryTree(listingCategoryTree.value),
+);
+
+function mapListingCategoryTree(
+  nodes: XqListingApi.CategoryNode[],
+): Array<Record<string, any>> {
+  return (nodes || []).map((n) => ({
+    title: n.name,
+    value: n.id,
+    key: n.id,
+    children: n.children?.length
+      ? mapListingCategoryTree(n.children)
+      : undefined,
+  }));
+}
+
+function findListingCategoryName(
+  nodes: XqListingApi.CategoryNode[],
+  id?: string,
+): string | undefined {
+  if (!id) return undefined;
+  for (const n of nodes || []) {
+    if (n.id === id) return n.name;
+    const child = findListingCategoryName(n.children || [], id);
+    if (child) return child;
+  }
+  return undefined;
+}
 
 function productKey(item: XqProductApi.Product) {
   return item.itemCode || item.sku || String(item.id || '');
@@ -81,11 +152,84 @@ function clearSelection() {
   selectedMap.value = {};
 }
 
-async function dispatchSelected(extra?: XqProductApi.Product) {
+function toggleSelectPage(checked: boolean) {
+  if (checked) {
+    const next = { ...selectedMap.value };
+    for (const item of pageSelectable.value) {
+      const key = productKey(item);
+      if (key) next[key] = item;
+    }
+    selectedMap.value = next;
+    return;
+  }
+  const removeKeys = new Set(
+    pageSelectable.value.map((item) => productKey(item)).filter(Boolean),
+  );
+  selectedMap.value = Object.fromEntries(
+    Object.entries(selectedMap.value).filter(([k]) => !removeKeys.has(k)),
+  );
+}
+
+async function ensureListingPlatforms() {
+  if (platforms.value.length > 0) return;
+  platforms.value = (await getXqListingPlatforms()) || [];
+}
+
+async function onListingPlatformChange(id?: string) {
+  listingPlatformId.value = id;
+  listingShopId.value = undefined;
+  listingCategoryId.value = undefined;
+  shops.value = [];
+  listingCategoryTree.value = [];
+  if (!id) return;
+  listingLoading.value = true;
+  try {
+    const [shopList, catList] = await Promise.all([
+      getXqListingShops(id),
+      getXqListingCategories(id),
+    ]);
+    shops.value = shopList || [];
+    listingCategoryTree.value = catList || [];
+  } catch (error: any) {
+    message.error(error?.message || '加载店铺/分类失败');
+  } finally {
+    listingLoading.value = false;
+  }
+}
+
+async function openDispatchModal(extra?: XqProductApi.Product) {
   const map = { ...selectedMap.value };
   if (extra) {
     const key = productKey(extra);
     if (key) map[key] = extra;
+  }
+  if (Object.keys(map).length === 0) {
+    message.warning('请先勾选要跑的产品');
+    return;
+  }
+  dispatchExtra.value = extra || null;
+  try {
+    await ensureListingPlatforms();
+  } catch (error: any) {
+    message.error(error?.message || '加载平台失败');
+    return;
+  }
+  dispatchOpen.value = true;
+}
+
+async function confirmDispatch() {
+  if (
+    !listingPlatformId.value ||
+    !listingShopId.value ||
+    !listingCategoryId.value
+  ) {
+    message.warning('请选择上架平台、店铺与分类');
+    return;
+  }
+  const map = { ...selectedMap.value };
+  if (dispatchExtra.value) {
+    const key = productKey(dispatchExtra.value);
+    if (key) map[key] = dispatchExtra.value;
   }
   const items = Object.values(map).map((p) => ({
     sku: productKey(p),
@@ -98,11 +242,28 @@ async function dispatchSelected(extra?: XqProductApi.Product) {
     message.warning('请先勾选要跑的产品');
     return;
   }
+  const platformName = platforms.value.find(
+    (p) => p.id === listingPlatformId.value,
+  )?.name;
+  const shopName = shops.value.find((s) => s.id === listingShopId.value)?.name;
+  const categoryName = findListingCategoryName(
+    listingCategoryTree.value,
+    listingCategoryId.value,
+  );
   dispatching.value = true;
   try {
-    const list = await dispatchXqWorkOrder({ items });
+    const list = await dispatchXqWorkOrder({
+      listingPlatformId: listingPlatformId.value,
+      listingShopId: listingShopId.value,
+      listingCategoryId: listingCategoryId.value,
+      listingPlatformName: platformName,
+      listingShopName: shopName,
+      listingCategoryName: categoryName,
+      items,
+    });
     message.success(`已下发 ${list?.length ?? items.length} 个任务到工作台`);
     clearSelection();
+    dispatchOpen.value = false;
     detailOpen.value = false;
     await router.push('/xq-product/workspace/work-order');
   } catch (error: any) {
@@ -300,11 +461,20 @@ onMounted(async () => {
           enter-button="搜索"
           @search="handleSearch"
         />
+        <label class="xq-select-all">
+          <Checkbox
+            :checked="pageAllSelected"
+            :indeterminate="pageIndeterminate"
+            :disabled="pageSelectable.length === 0"
+            @change="(e: any) => toggleSelectPage(Boolean(e?.target?.checked))"
+          />
+          <span>全选本页</span>
+        </label>
         <Button
           type="primary"
           :disabled="selectedCount === 0"
           :loading="dispatching"
-          @click="dispatchSelected()"
+          @click="openDispatchModal()"
         >
           下发工作台{{ selectedCount ? ` (${selectedCount})` : '' }}
         </Button>
@@ -492,7 +662,7 @@ onMounted(async () => {
       class="xq-detail-modal"
       ok-text="下发工作台"
       :confirm-loading="dispatching"
-      @ok="detail && dispatchSelected(detail)"
+      @ok="detail && openDispatchModal(detail)"
     >
       <Spin :spinning="detailLoading">
         <div v-if="detail" class="xq-detail">
@@ -583,6 +753,54 @@ onMounted(async () => {
         </div>
       </Spin>
     </Modal>
+
+    <Modal
+      v-model:open="dispatchOpen"
+      title="选择上架平台 / 店铺 / 分类"
+      ok-text="确认下发"
+      :confirm-loading="dispatching"
+      destroy-on-close
+      @ok="confirmDispatch"
+    >
+      <p class="xq-dispatch-hint">
+        下发前请指定目标平台分类，工作台可按此筛选领取与处理。
+      </p>
+      <Spin :spinning="listingLoading">
+        <div class="xq-dispatch-form">
+          <label>上架平台</label>
+          <Select
+            v-model:value="listingPlatformId"
+            allow-clear
+            show-search
+            option-filter-prop="label"
+            placeholder="请选择平台"
+            :options="platformOptions"
+            @change="(v: any) => onListingPlatformChange(v)"
+          />
+          <label>上架店铺</label>
+          <Select
+            v-model:value="listingShopId"
+            allow-clear
+            show-search
+            option-filter-prop="label"
+            placeholder="请先选平台，再选店铺"
+            :options="shopOptions"
+            :disabled="!listingPlatformId"
+          />
+          <label>平台分类</label>
+          <TreeSelect
+            v-model:value="listingCategoryId"
+            allow-clear
+            show-search
+            tree-node-filter-prop="title"
+            placeholder="请选择平台分类"
+            :tree-data="listingCategoryTreeData"
+            :disabled="!listingPlatformId"
+            style="width: 100%"
+          />
+        </div>
+      </Spin>
+    </Modal>
   </Page>
 </template>
 
@@ -593,6 +811,24 @@ onMounted(async () => {
   gap: 16px;
   min-height: 100%;
   padding: 4px 2px 16px;
+}
+
+.xq-dispatch-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.xq-dispatch-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.xq-dispatch-form label {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #374151;
 }
 
 .xq-search-bar {
@@ -608,6 +844,17 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.xq-select-all {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: #374151;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
 }
 
 .xq-cat-trigger {
