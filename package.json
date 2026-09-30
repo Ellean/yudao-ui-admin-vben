@@ -1,8 +1,8 @@
 {
-  "name": "vben-admin-monorepo",
+  "name": "star-ecom-erp",
   "version": "5.7.0",
   "private": true,
-  "yudao-version": "2026.08.0-snapshot",
+  "upstream-version": "2026.08.0-snapshot",
   "keywords": [
     "monorepo",
     "turbo",
@@ -15,14 +15,12 @@
     "vue vben admin pro",
     "vue3"
   ],
-  "homepage": "https://github.com/vbenjs/vue-vben-admin",
-  "bugs": "https://github.com/vbenjs/vue-vben-admin/issues",
-  "repository": "vbenjs/vue-vben-admin.git",
+  "homepage": "https://github.com/Ellean/yudao-ui-admin-vben",
+  "bugs": "https://github.com/Ellean/yudao-ui-admin-vben/issues",
+  "repository": "Ellean/yudao-ui-admin-vben.git",
   "license": "MIT",
   "author": {
-    "name": "vben",
-    "email": "ann.vben@gmail.com",
-    "url": "https://github.com/anncwb"
+    "name": "Ellean"
   },
   "type": "module",
   "scripts": {

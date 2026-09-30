@@ -43,9 +43,7 @@ function defineApplicationConfig(userConfigPromise?: DefineApplicationOptions) {
       nitroMock: !isBuild,
       nitroMockOptions: {},
       print: !isBuild,
-      printInfoMap: {
-        Docs: 'https://doc.iocoder.cn/quick-start/',
-      },
+      printInfoMap: {},
       pwa: true,
       pwaOptions: getDefaultPwaOptions(appTitle),
       vxeTableLazyImport: true,

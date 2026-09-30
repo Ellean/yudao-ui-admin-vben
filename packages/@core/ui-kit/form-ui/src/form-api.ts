@@ -406,7 +406,6 @@ export class FormApi<
 
   /**
    * 设置表单禁用状态：用于非 Modal 中使用 Form 时，需要 Form 自己控制禁用状态
-   * @author 芋道源码
    * @param disabled 是否禁用
    */
   setDisabled(disabled: boolean) {
@@ -438,7 +437,6 @@ export class FormApi<
 
   /**
    * 设置表单提交按钮的加载状态：用于非 Modal 中使用 Form 时，需要 Form 自己控制 loading 状态
-   * @author 芋道源码
    * @param loading 是否加载中
    */
   setLoading(loading: boolean) {
