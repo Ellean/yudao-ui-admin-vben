@@ -109,7 +109,67 @@ rg -n 'yudao|芋道|iocoder' --glob '!**/node_modules/**' --glob '!pnpm-lock.yam
 
 已核实以上无一位于本次迁移改动的文件中。Phase 5 已修复迁移自身引入的部分：删除 `pnpm-workspace.yaml` 中 14 个因裁剪 UI 壳/文档站而不再使用的 catalog 条目，并修复 README.md / docs/rebrand-cleanup.md 的 markdown 格式（lefthook 不检查 md/yaml，全量 lint 才会暴露）。想一次性还清格式债：`pnpm exec vsh lint --format`（自动修复 oxfmt 部分，oxlint 错误需手工）。
 
-## 5. 收尾核对清单
+## 5. 上游同步冲突清单与解法（fork master → main）
+
+同步方向：上游 `yudaocode/yudao-ui-admin-vben` 的 `master` → 本 fork 的 `master`（GitHub 端 Sync fork）→ merge 进 `main` → 按需下传 `dev`/`test`。fork 默认分支为 `main`（上游默认 `master`）。冲突来源是 rebrand 的三类改动：品牌替换、UI 壳/文档站裁剪、.github 工作流改造。
+
+### 5.1 修改类冲突热点（rebrand 触碰的 30 个文件）
+
+清单生成命令（SHA 固定，可直接复跑核对）：
+
+```bash
+git diff --name-status c89730db5^ 426b301ee --diff-filter=M
+```
+
+| 文件 | 合并策略 |
+| --- | --- |
+| `pnpm-lock.yaml` | **绝不手工合并**。先按下面两行手工合好 `package.json` 与 `pnpm-workspace.yaml`，lockfile 任取一侧解决后跑 `pnpm install` 重新生成再 `git add` |
+| `package.json` | 品牌 name/description 与新增 scripts 保留 ours；上游新增依赖/脚本全部接纳 |
+| `pnpm-workspace.yaml` | 上游新增/升级的 catalog 条目若被保留包引用则接纳；第 4 节删除的 14 个条目对应已裁剪的壳/文档站，保持删除 |
+| `README.md`、`AGENTS.md`、`LICENSE` | 保留 Star 版本；上游新章节择要搬运 |
+| `apps/web-antd/.env` | `VITE_APP_TITLE` / `VITE_APP_NAMESPACE` / `VITE_BASE_URL` 保留 ours；上游新增变量接纳 |
+| `apps/web-antd/index.html`、`src/preferences.ts`、`src/layouts/basic.vue` | 品牌 title/name/logo 保留 ours；上游功能改动逐处接纳 |
+| `packages/@core/base/shared/src/constants/vben.ts`、`packages/@core/ui-kit/form-ui/src/form-api.ts`、`packages/effects/common-ui/src/ui/about/about.vue`、`packages/effects/common-ui/src/ui/authentication/index.ts`、`packages/effects/common-ui/src/ui/authentication/login.vue`、`packages/effects/layouts/src/widgets/help/help.vue` | 品牌文案保留 ours；上游功能改动接纳 |
+| `apps/web-antd/src/views/` 下 6 处（`ai/chat/.../list-empty.vue`、`bpm/.../ProcessDesigner.vue`、`dashboard/workspace/index.vue`、`im/home/index.vue`、`mall/.../user-card/index.vue`、`mp/.../wx-location.vue`） | rebrand 零散文案点，双端冲突时逐处判断 |
+| `vben-admin.code-workspace` | take ours |
+| `scripts/deploy/Dockerfile`、`scripts/deploy/build-local-docker-image.sh` | 品牌标签保留 ours；上游构建改动接纳 |
+| `internal/lint-configs/oxlint-config/src/configs/ignores.ts`、`internal/tailwind-config/src/theme.css`、`internal/vite-config/src/config/application.ts` | 工程配置零散改动，逐处判断 |
+
+### 5.2 .github 工作流（2026-09-30 已恢复适配，防上游覆盖）
+
+- 已恢复并移除 `github.repository == 'vbenjs/vue-vben-admin'` 门禁：`codeql`、`semantic-pull-request`、`draft`、`release-tag`、`issue-labeled`、`issue-close-require`、`lock`、`stale`、`rerun`、`changeset-version`（剥离 job if 尾部门禁）、`deploy`（重写为 workflow_dispatch 手动触发，仅保留 web-antd FTP 部署 + 失败自动重试；其余 4 个 job 引用的 playground/docs/web-ele/web-naive 目录在本 fork 不存在，故删除）。
+- 已恢复配置文件：`semantic.yml`（PR 标题检查机器人 probot 配置，与 semantic-pull-request.yml 内联 types 互为备份）、`release-drafter.yml`。
+- `build.yml` 未恢复：与 ci.yml 的 build job 完全重复。
+- 同步守则：`ci.yml` 逐 job 接纳上游变更但**保留 push 触发段（main/test/dev）**；`setup-node/action.yml` 可接纳 action 版本升级，但 `github.ref_name == 'main'` 缓存条件必须保留 —— 它对应 fork 默认分支 main：**默认分支 push 时保存 pnpm 缓存，其余分支/PR 只读复用**。
+- `issue-labeled` / `issue-close-require` / `stale` 引用的标签体系源自上游社区运营，fork 内无害，保留原样。
+
+### 5.3 目录级删除冲突（modify/delete → 一律保留删除）
+
+rebrand 删除的路径上游继续更新时会产生 modify/delete 冲突，统一解法是保留我方删除：
+
+- UI 壳：`apps/web-ele`、`apps/web-antdv-next`、`apps/web-tdesign`、`apps/web-naive`
+- 文档站：`docs/`（**注意** `docs/rebrand-cleanup.md` 是本仓库新增文件，批量 `git rm -r docs/` 前先单独保留）
+- `.gitee/` 全部
+- `.github/`：`pull_request_template.md`、`contributing.md`、`config.yml`、`CODEOWNERS`、`ISSUE_TEMPLATE/`（`semantic.yml`、`release-drafter.yml` 与 11 个工作流已恢复，见 5.2）
+- 单文件：`apps/web-antd/public/wx-xingyu.png`、`packages/effects/common-ui/src/ui/authentication/doc-link.vue`
+
+冲突现场批量解法（`DU` = 我方删除、上游修改）：
+
+```bash
+git status --porcelain | awk '$1=="DU" {print $2}' | while read -r f; do
+  git rm -r -- "$f"
+done
+git diff --name-only --diff-filter=U   # 应无输出，即冲突已清空
+```
+
+### 5.4 节奏与验证
+
+- 建议每月（或上游重要 release 时）同步一次，冲突规模与间隔成正比。
+- 流程：fork `master` Sync fork → `main` merge `master`（按 5.1–5.3 解决）→ 按需下传 `dev`、`test`。
+- 合并完成必跑：`pnpm install`（lockfile 重生成）、`pnpm run lint`、`pnpm dev:antd` 冒烟。
+- 规模预估：修改类热点固定约 30 文件 + `pnpm-lock.yaml`；目录级 modify/delete 约 6800 文件，但全部可脚本化保留删除，无手工成本。
+
+## 6. 收尾核对清单
 
 - [ ] DocAlert 移除（方案 A 或 B，见第 1 节）
 - [ ] favicon / logo 美术资产替换（`apps/web-antd/public/favicon.ico`、`logo.png` 等仍是 vben 视觉，待设计稿）
@@ -117,3 +177,6 @@ rg -n 'yudao|芋道|iocoder' --glob '!**/node_modules/**' --glob '!pnpm-lock.yam
 - [ ] 修复 66 个既有 typecheck 错误后恢复 CI typecheck job
 - [ ] 业务模块裁剪决策（mall/crm/erp/im 等是否保留，当前全部保留）
 - [ ] `VITE_APP_NAMESPACE` 改为 `star-ecom-erp` 后 localStorage 键前缀变化 —— 部署到已存在用户的环境会强制重新登录（预期行为，发布说明需提及）
+- [x] 恢复上游 GitHub 工作流并去除 vbenjs 门禁（2026-09-30，11 个工作流 + semantic.yml + release-drafter.yml；build.yml 未恢复，与 ci.yml build job 重复）
+- [ ] 定期同步上游 master → main（建议每月，冲突清单见第 5 节）
+- [ ] 如需 FTP 部署：配置仓库 secrets `PRO_FTP_HOST` / `WEB_ANTD_FTP_ACCOUNT` / `WEB_ANTD_FTP_PASSWORD`（deploy.yml 已改为手动触发，secrets 缺失时运行会失败）
