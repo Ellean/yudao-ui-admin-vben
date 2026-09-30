@@ -188,7 +188,8 @@ function updateModelValue(val: Arrayable<Recordable<any>>) {
     //   ...new Set(filteredVal.map((v) => get(v, props.valueField))),
     // ];
     const selectedIds = filteredVal.map((v) => get(v, props.valueField));
-    modelValue.value = mergeIndeterminate(selectedIds);
+    // Reka UI 勾选半选父节点时会发出重复的选中值，必须去重（b5029a0b6 曾修复过）
+    modelValue.value = mergeIndeterminate([...new Set(selectedIds)]);
   } else {
     // 单选模式下取消选择时 val 为 null/undefined，需要同步清空
     modelValue.value =
