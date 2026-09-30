@@ -19,14 +19,14 @@ pnpm dev:antd
 
 ## 常用命令
 
-| 命令                 | 说明                  |
-| -------------------- | --------------------- |
-| `pnpm dev:antd`      | 启动 web-antd 开发服务器 |
-| `pnpm build:antd`    | 构建 web-antd 生产包  |
-| `pnpm check:type`    | 全仓类型检查          |
-| `pnpm lint`          | 代码检查              |
-| `pnpm test:unit`     | 单元测试              |
-| `pnpm build:docker`  | 构建本地 Docker 镜像  |
+| 命令                | 说明                     |
+| ------------------- | ------------------------ |
+| `pnpm dev:antd`     | 启动 web-antd 开发服务器 |
+| `pnpm build:antd`   | 构建 web-antd 生产包     |
+| `pnpm check:type`   | 全仓类型检查             |
+| `pnpm lint`         | 代码检查                 |
+| `pnpm test:unit`    | 单元测试                 |
+| `pnpm build:docker` | 构建本地 Docker 镜像     |
 
 ## 目录结构
 
