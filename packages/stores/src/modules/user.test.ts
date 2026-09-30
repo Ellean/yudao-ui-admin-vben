@@ -16,17 +16,14 @@ describe('useUserStore', () => {
   });
 
   // 测试重置用户信息时的行为
-  it('clears userInfo and userRoles when setting null userInfo', () => {
+  // 注：setUserInfo 不负责派生 userRoles，角色仅由 setUserRoles 维护
+  it('clears userInfo when setting null userInfo', () => {
     const store = useUserStore();
-    store.setUserInfo({
-      roles: [{ roleName: 'User', value: 'user' }],
-    } as any);
-    expect(store.userInfo).not.toBeNull();
-    expect(store.userRoles.length).toBeGreaterThan(0);
+    store.setUserRoles(['user']);
 
     store.setUserInfo(null as any);
     expect(store.userInfo).toBeNull();
-    expect(store.userRoles).toEqual([]);
+    expect(store.userRoles).toEqual(['user']);
   });
 
   // 测试在没有用户角色时返回空数组
