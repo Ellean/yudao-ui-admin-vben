@@ -111,7 +111,7 @@ rg -n 'yudao|芋道|iocoder' --glob '!**/node_modules/**' --glob '!pnpm-lock.yam
 
 ## 5. 上游同步冲突清单与解法（fork master → main）
 
-同步方向：上游 `yudaocode/yudao-ui-admin-vben` 的 `master` → 本 fork 的 `master`（GitHub 端 Sync fork）→ merge 进 `main` → 按需下传 `dev`/`test`。fork 默认分支为 `main`（上游默认 `master`）。冲突来源是 rebrand 的三类改动：品牌替换、UI 壳/文档站裁剪、.github 工作流改造。
+同步方向：上游 `yudaocode/yudao-ui-admin-vben` 的 `master` → 本 fork 的 `master`（GitHub 端 Sync fork）→ **以 PR 方式合入 `main`** → 按需下传 `dev`/`test`。fork 默认分支为 `main`（上游默认 `master`）。冲突来源是 rebrand 的三类改动：品牌替换、UI 壳/文档站裁剪、.github 工作流改造。
 
 ### 5.1 修改类冲突热点（rebrand 触碰的 30 个文件）
 
@@ -139,7 +139,7 @@ git diff --name-status c89730db5^ 426b301ee --diff-filter=M
 
 - 已恢复并移除 `github.repository == 'vbenjs/vue-vben-admin'` 门禁：`codeql`、`semantic-pull-request`、`draft`、`release-tag`、`issue-labeled`、`issue-close-require`、`lock`、`stale`、`rerun`、`changeset-version`（剥离 job if 尾部门禁）、`deploy`（重写为 workflow_dispatch 手动触发，仅保留 web-antd FTP 部署 + 失败自动重试；其余 4 个 job 引用的 playground/docs/web-ele/web-naive 目录在本 fork 不存在，故删除）。
 - 已恢复配置文件：`semantic.yml`（PR 标题检查机器人 probot 配置，与 semantic-pull-request.yml 内联 types 互为备份）、`release-drafter.yml`。
-- `build.yml` 未恢复：与 ci.yml 的 build job 完全重复。
+- `build.yml`（Build detection）：与 ci.yml 的 build job **并不重复** —— 它面向合入 `main` 的 PR（`pull_request_target`），在 ubuntu + windows 双平台跑 `turbo` 全仓构建（ci.yml 仅 ubuntu 构建 web-antd）；上游注释表明它最初兼作 Dependabot 依赖更新 PR 的构建验证。已去门禁、其余保持上游原文。
 - 同步守则：`ci.yml` 逐 job 接纳上游变更但**保留 push 触发段（main/test/dev）**；`setup-node/action.yml` 可接纳 action 版本升级，但 `github.ref_name == 'main'` 缓存条件必须保留 —— 它对应 fork 默认分支 main：**默认分支 push 时保存 pnpm 缓存，其余分支/PR 只读复用**。
 - `issue-labeled` / `issue-close-require` / `stale` 引用的标签体系源自上游社区运营，fork 内无害，保留原样。
 
@@ -150,7 +150,7 @@ rebrand 删除的路径上游继续更新时会产生 modify/delete 冲突，统
 - UI 壳：`apps/web-ele`、`apps/web-antdv-next`、`apps/web-tdesign`、`apps/web-naive`
 - 文档站：`docs/`（**注意** `docs/rebrand-cleanup.md` 是本仓库新增文件，批量 `git rm -r docs/` 前先单独保留）
 - `.gitee/` 全部
-- `.github/`：`pull_request_template.md`、`contributing.md`、`config.yml`、`CODEOWNERS`、`ISSUE_TEMPLATE/`（`semantic.yml`、`release-drafter.yml` 与 11 个工作流已恢复，见 5.2）
+- `.github/`：`pull_request_template.md`、`contributing.md`、`config.yml`、`CODEOWNERS`、`ISSUE_TEMPLATE/`（`semantic.yml`、`release-drafter.yml` 与 12 个工作流已恢复，见 5.2）
 - 单文件：`apps/web-antd/public/wx-xingyu.png`、`packages/effects/common-ui/src/ui/authentication/doc-link.vue`
 
 冲突现场批量解法（`DU` = 我方删除、上游修改）：
@@ -165,7 +165,7 @@ git diff --name-only --diff-filter=U   # 应无输出，即冲突已清空
 ### 5.4 节奏与验证
 
 - 建议每月（或上游重要 release 时）同步一次，冲突规模与间隔成正比。
-- 流程：fork `master` Sync fork → `main` merge `master`（按 5.1–5.3 解决）→ 按需下传 `dev`、`test`。
+- 流程：fork `master` Sync fork → 发起 `master` → `main` 的 PR（冲突按 5.1–5.3 在合并时解决；PR 标题需符合 conventional 规范，如 `chore: sync upstream master`，否则 semantic 检查不通过）→ 合并后按需下传 `dev`、`test`。
 - 合并完成必跑：`pnpm install`（lockfile 重生成）、`pnpm run lint`、`pnpm dev:antd` 冒烟。
 - 规模预估：修改类热点固定约 30 文件 + `pnpm-lock.yaml`；目录级 modify/delete 约 6800 文件，但全部可脚本化保留删除，无手工成本。
 
@@ -177,6 +177,6 @@ git diff --name-only --diff-filter=U   # 应无输出，即冲突已清空
 - [ ] 修复 66 个既有 typecheck 错误后恢复 CI typecheck job
 - [ ] 业务模块裁剪决策（mall/crm/erp/im 等是否保留，当前全部保留）
 - [ ] `VITE_APP_NAMESPACE` 改为 `star-ecom-erp` 后 localStorage 键前缀变化 —— 部署到已存在用户的环境会强制重新登录（预期行为，发布说明需提及）
-- [x] 恢复上游 GitHub 工作流并去除 vbenjs 门禁（2026-09-30，11 个工作流 + semantic.yml + release-drafter.yml；build.yml 未恢复，与 ci.yml build job 重复）
+- [x] 恢复上游 GitHub 工作流并去除 vbenjs 门禁（2026-09-30，12 个工作流 + semantic.yml + release-drafter.yml）
 - [ ] 定期同步上游 master → main（建议每月，冲突清单见第 5 节）
 - [ ] 如需 FTP 部署：配置仓库 secrets `PRO_FTP_HOST` / `WEB_ANTD_FTP_ACCOUNT` / `WEB_ANTD_FTP_PASSWORD`（deploy.yml 已改为手动触发，secrets 缺失时运行会失败）
