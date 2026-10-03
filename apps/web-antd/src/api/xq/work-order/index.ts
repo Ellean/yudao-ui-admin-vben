@@ -28,10 +28,18 @@ export namespace XqWorkOrderApi {
     listingShopName?: string;
     listingCategoryName?: string;
     workflowPhase?: string;
+    sourceDescription?: string;
+    sourceImageUrls?: string;
+    copyResultJson?: string;
+    imagePromptJson?: string;
+    rpaCopyWorkUuid?: string;
+    rpaCopyStatus?: string;
+    rpaCopyError?: string;
     createTime?: string;
   }
 
   export interface DispatchItem {
+    productId?: string;
     sku: string;
     title?: string;
     coverUrl?: string;
@@ -100,7 +108,13 @@ export function dispatchXqWorkOrder(data: XqWorkOrderApi.DispatchReq) {
   );
 }
 
-export function updateXqWorkOrder(data: Partial<XqWorkOrderApi.WorkOrder>) {
+export function updateXqWorkOrder(
+  data: Partial<XqWorkOrderApi.WorkOrder> & {
+    contentHighlight?: string;
+    copyResultJson?: string;
+    imagePromptJson?: string;
+  },
+) {
   return requestClient.put('/xq/work-order/update', data);
 }
 
@@ -131,4 +145,12 @@ export function generateXqWorkOrderImage(id: number) {
 
 export function completeXqWorkOrder(data: XqWorkOrderApi.CompleteReq) {
   return requestClient.post<number>('/xq/work-order/complete', data);
+}
+
+export function closeXqWorkOrder(id: number) {
+  return requestClient.post<boolean>(`/xq/work-order/close?id=${id}`);
+}
+
+export function batchCloseXqWorkOrder(ids: number[]) {
+  return requestClient.post<number>('/xq/work-order/batch-close', { ids });
 }
