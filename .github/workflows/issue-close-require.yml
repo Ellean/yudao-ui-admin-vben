@@ -14,7 +14,6 @@ permissions:
 
 jobs:
   close-issues:
-    if: github.repository == 'vbenjs/vue-vben-admin'
     runs-on: ubuntu-latest
     steps:
       # 关闭未活动的 Issues
