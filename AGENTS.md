@@ -26,7 +26,12 @@ pnpm dev:antd
 
 ## Agent 行为
 
-1. 业务改动只在 `apps/web-antd`；新接口先写 `api` 再写 `views`
-2. 与后端模块开关保持一致，勿依赖未启用模块的接口
-3. 包管理只用 pnpm；Node ≥ 22.18
-4. 后端/业务文档：https://doc.iocoder.cn/ （芋道后端配套文档，页面内 DocAlert 链接尚未移除，见 docs/rebrand-cleanup.md）
+1. 未指定 UI 壳时默认改 `web-ele`；XQ 产品工作台在 **`web-antd`**
+2. 新接口先写 `api` 再写 `views`
+3. 与后端模块开关保持一致，勿依赖未启用模块的接口
+4. 包管理只用 pnpm；Node ≥ 22.18
+5. 文档：https://doc.iocoder.cn/quick-start/
+6. **Git 提交**：遵守 commitlint（见 `.cursor/rules/commitlint-frontend.mdc`）
+   - 格式：`type(@vben/web-antd): subject`（scope 必须带 `@vben/` 前缀）
+   - **body 每一行 ≤ 100 字符**；宁可无 body，也不写超长句
+   - 禁止为绕过 hook 使用 `--no-verify`（除非用户明确要求）
