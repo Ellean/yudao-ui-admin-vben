@@ -152,10 +152,10 @@ onMounted(load);
               placeholder="对应旧项目个人任务 UUID"
             />
           </FormItem>
-          <FormItem label="文案图文生任务 UUID">
+          <FormItem label="文案生成流程 UUID">
             <Input
               v-model:value="form.copyJobUuid"
-              placeholder="新文案 RPA 任务 UUID"
+              placeholder="发布「文案生成流程」后的 Job UUID"
             />
           </FormItem>
           <FormItem label="ERP 站点">
