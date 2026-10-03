@@ -234,6 +234,7 @@ async function confirmDispatch() {
     if (key) map[key] = dispatchExtra.value;
   }
   const items = Object.values(map).map((p) => ({
+    productId: p.id ? String(p.id) : undefined,
     sku: productKey(p),
     title: p.name || productKey(p),
     coverUrl: p.imageUrl,
@@ -269,7 +270,12 @@ async function confirmDispatch() {
     detailOpen.value = false;
     await router.push('/xq-product/workspace/work-order');
   } catch (error: any) {
-    message.error(error?.message || '下发失败');
+    const msg = error?.message || '下发失败';
+    message.error(
+      /该平台已有|已有进行中|已上架/.test(msg)
+        ? `${msg}（可在任务列表关闭后重试）`
+        : msg,
+    );
   } finally {
     dispatching.value = false;
   }

@@ -3,7 +3,7 @@ import type { XqListingApi } from '#/api/xq/listing';
 import type { XqProductApi } from '#/api/xq/product';
 import type { XqWorkOrderApi } from '#/api/xq/work-order';
 
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
@@ -16,6 +16,7 @@ import {
   Image,
   Input,
   message,
+  Modal,
   Pagination,
   Select,
   Spin,
@@ -30,7 +31,9 @@ import {
 } from '#/api/xq/listing';
 import { getXqCategoryTree } from '#/api/xq/product';
 import {
+  batchCloseXqWorkOrder,
   batchGenerateXqWorkOrderCopy,
+  closeXqWorkOrder,
   getXqWorkOrderPage,
 } from '#/api/xq/work-order';
 
@@ -54,8 +57,14 @@ const pageNo = ref(1);
 const pageSize = ref(12);
 const selectedMap = ref<Record<number, XqWorkOrderApi.WorkOrder>>({});
 const batching = ref(false);
+const closing = ref(false);
+let rpaPollTimer: null | ReturnType<typeof setInterval> = null;
 
 const selectedCount = computed(() => Object.keys(selectedMap.value).length);
+const selectedDoingCount = computed(
+  () =>
+    Object.values(selectedMap.value).filter((row) => row.status === 10).length,
+);
 
 const l2List = computed(() => browseL1.value?.children || []);
 const l3List = computed(() => browseL2.value?.children || []);
@@ -189,8 +198,36 @@ async function onFilterPlatformChange(id?: string) {
   handleSearch();
 }
 
-async function loadTasks() {
-  loading.value = true;
+function hasPendingRpa(list: XqWorkOrderApi.WorkOrder[]) {
+  return list.some(
+    (t) => t.rpaCopyStatus === 'queued' || t.rpaCopyStatus === 'running',
+  );
+}
+
+function stopRpaPoll() {
+  if (rpaPollTimer) {
+    clearInterval(rpaPollTimer);
+    rpaPollTimer = null;
+  }
+}
+
+function startRpaPoll() {
+  if (rpaPollTimer) return;
+  rpaPollTimer = setInterval(async () => {
+    if (!hasPendingRpa(tasks.value)) {
+      stopRpaPoll();
+      return;
+    }
+    try {
+      await loadTasks({ silent: true });
+    } catch {
+      // ignore poll errors
+    }
+  }, 5000);
+}
+
+async function loadTasks(opts?: { silent?: boolean }) {
+  if (!opts?.silent) loading.value = true;
   try {
     const kw = queryParams.keyword?.trim();
     const res = await getXqWorkOrderPage({
@@ -205,10 +242,12 @@ async function loadTasks() {
     });
     tasks.value = res?.list || [];
     total.value = Number(res?.total || 0);
+    if (hasPendingRpa(tasks.value)) startRpaPoll();
+    else stopRpaPoll();
   } catch (error: any) {
-    message.error(error?.message || '任务加载失败');
+    if (!opts?.silent) message.error(error?.message || '任务加载失败');
   } finally {
-    loading.value = false;
+    if (!opts?.silent) loading.value = false;
   }
 }
 
@@ -245,6 +284,10 @@ function isImageReady(row: XqWorkOrderApi.WorkOrder) {
 function stageText(row: XqWorkOrderApi.WorkOrder) {
   if (row.status === 20) return '已上架';
   if (row.status !== 10) return '已关闭';
+  if (row.rpaCopyStatus === 'queued' || row.rpaCopyStatus === 'running') {
+    return '文案生成中';
+  }
+  if (row.rpaCopyStatus === 'fail') return '文案失败';
   if (!isCopyReady(row)) return '待文案';
   if (!isImageReady(row)) return '待图片';
   return '待上架';
@@ -253,6 +296,10 @@ function stageText(row: XqWorkOrderApi.WorkOrder) {
 function stageColor(row: XqWorkOrderApi.WorkOrder) {
   if (row.status === 20) return 'success';
   if (row.status !== 10) return 'default';
+  if (row.rpaCopyStatus === 'fail') return 'error';
+  if (row.rpaCopyStatus === 'queued' || row.rpaCopyStatus === 'running') {
+    return 'processing';
+  }
   if (!isCopyReady(row)) return 'processing';
   if (!isImageReady(row)) return 'warning';
   return 'orange';
@@ -292,12 +339,15 @@ async function batchGenerateCopy() {
   batching.value = true;
   try {
     const list = await batchGenerateXqWorkOrderCopy(ids);
+    const queued = (list || []).filter(
+      (t) => t.rpaCopyStatus === 'queued' || t.rpaCopyStatus === 'running',
+    ).length;
     message.success(
-      `已生成 ${list?.length ?? ids.length} 条文案，进入「我的文案」`,
+      `已触发文案 RPA ${list?.length ?? ids.length} 条（入队 ${queued}）。列表将自动刷新状态`,
     );
     clearSelection();
     await loadTasks();
-    await router.push('/xq-product/workspace/copy-pool');
+    if (queued > 0) startRpaPoll();
   } catch (error: any) {
     message.error(error?.message || '批量生成失败');
   } finally {
@@ -305,9 +355,82 @@ async function batchGenerateCopy() {
   }
 }
 
+function selectedDoingIds() {
+  return Object.values(selectedMap.value)
+    .filter((row): row is XqWorkOrderApi.WorkOrder & { id: number } => {
+      return row.status === 10 && typeof row.id === 'number';
+    })
+    .map((row) => row.id);
+}
+
+function omitSelected(id: number) {
+  const next: Record<number, XqWorkOrderApi.WorkOrder> = {};
+  for (const [key, value] of Object.entries(selectedMap.value)) {
+    if (Number(key) !== id) {
+      next[Number(key)] = value;
+    }
+  }
+  selectedMap.value = next;
+}
+
+async function closeOneTask(row: XqWorkOrderApi.WorkOrder) {
+  if (!row.id || row.status !== 10) return;
+  Modal.confirm({
+    title: '关闭并清理任务',
+    content: `确认关闭「${row.externalSku || row.title || row.id}」？将清空文案、美工分配与生成图，并从「我的文案」移除；关闭后可同平台重新下发。`,
+    okText: '关闭并清理',
+    okType: 'danger',
+    cancelText: '取消',
+    async onOk() {
+      try {
+        await closeXqWorkOrder(row.id!);
+        message.success('已关闭并清理进度');
+        omitSelected(row.id!);
+        await loadTasks();
+      } catch (error: any) {
+        message.error(error?.message || '关闭失败');
+        throw error;
+      }
+    },
+  });
+}
+
+async function batchCloseTasks() {
+  const ids = selectedDoingIds();
+  if (ids.length === 0) {
+    message.warning('请先勾选进行中的任务');
+    return;
+  }
+  Modal.confirm({
+    title: '批量关闭并清理',
+    content: `确认关闭选中的 ${ids.length} 个任务？将清空文案、美工分配与生成图，并从「我的文案」移除；关闭后可同平台重新下发。`,
+    okText: '关闭并清理',
+    okType: 'danger',
+    cancelText: '取消',
+    async onOk() {
+      closing.value = true;
+      try {
+        const n = await batchCloseXqWorkOrder(ids);
+        message.success(`已关闭并清理 ${n} 个任务`);
+        clearSelection();
+        await loadTasks();
+      } catch (error: any) {
+        message.error(error?.message || '批量关闭失败');
+        throw error;
+      } finally {
+        closing.value = false;
+      }
+    },
+  });
+}
+
 onMounted(async () => {
   await Promise.all([loadCategories(), loadListingPlatforms()]);
   await loadTasks();
+});
+
+onUnmounted(() => {
+  stopRpaPoll();
 });
 </script>
 
@@ -391,6 +514,14 @@ onMounted(async () => {
           @click="batchGenerateCopy"
         >
           批量生成文案{{ selectedCount ? ` (${selectedCount})` : '' }}
+        </Button>
+        <Button
+          danger
+          :disabled="selectedDoingCount === 0"
+          :loading="closing"
+          @click="batchCloseTasks"
+        >
+          批量关闭清理{{ selectedDoingCount ? ` (${selectedDoingCount})` : '' }}
         </Button>
         <Button v-if="selectedCount" @click="clearSelection">清空选择</Button>
         <Button
@@ -500,6 +631,15 @@ onMounted(async () => {
               >
                 <Checkbox :checked="isSelected(row)" />
               </div>
+              <span
+                v-if="row.status === 10"
+                class="xq-card-close"
+                title="关闭任务"
+                role="button"
+                @click.stop="closeOneTask(row)"
+              >
+                ×
+              </span>
               <div class="xq-card-cover">
                 <Image
                   :src="coverOf(row)"
@@ -831,6 +971,32 @@ onMounted(async () => {
 .xq-task-card.selected {
   border-color: #1677ff;
   box-shadow: 0 6px 18px rgb(22 119 255 / 14%);
+}
+
+.xq-card-close {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+  background: rgb(255 255 255 / 92%);
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+}
+
+.xq-card-close:hover {
+  color: #fff;
+  background: #ef4444;
+  border-color: #ef4444;
 }
 
 .xq-card-check {
