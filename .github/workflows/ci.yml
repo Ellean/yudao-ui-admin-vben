@@ -355,8 +355,8 @@ jobs:
           # 失败 job 名单与整跑耗时；notify 自身仍在运行、skipped job 无时间戳，均需过滤 null
           JOBS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" --jq '.jobs')
           FAILED=$(jq -r '[.[] | select(.conclusion == "failure") | .name] | join("、")' <<<"$JOBS")
-          START=$(jq -r '[.[].startedAt | select(. != null)] | min' <<<"$JOBS")
-          END=$(jq -r '[.[].completedAt | select(. != null)] | max' <<<"$JOBS")
+          START=$(jq -r '[.[].started_at | select(. != null)] | min' <<<"$JOBS")
+          END=$(jq -r '[.[].completed_at | select(. != null)] | max' <<<"$JOBS")
           SECS=$(( $(date -u -d "$END" +%s) - $(date -u -d "$START" +%s) ))
           DUR="$(( SECS / 60 ))m$(( SECS % 60 ))s"
 
