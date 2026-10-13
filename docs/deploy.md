@@ -20,13 +20,13 @@ push 到 `main` / `test` / `dev` 后，`ci.yml` 在镜像推送 GHCR 成功后�
 
 ## Funnel 公网入口（每环境一个节点）
 
-| 分支 | Funnel 入口 |
-| --- | --- |
+| 分支 | Funnel 入口                                 |
+| ---- | ------------------------------------------- |
 | main | https://star-ecom-erp-main.tail08f53.ts.net |
 | test | https://star-ecom-erp-test.tail08f53.ts.net |
-| dev | https://star-ecom-erp-dev.tail08f53.ts.net |
+| dev  | https://star-ecom-erp-dev.tail08f53.ts.net  |
 
-- sidecar 镜像 `tailscale/tailscale:stable`，`network_mode: "service:web"` 共享 web 命名空间，serve 配置内联在 compose 文件（`configs.content`，`AllowFunnel: true`）
+- sidecar 镜像 `tailscale/tailscale:stable`，`network_mode: 'service:web'` 共享 web 命名空间，serve 配置内联在 compose 文件（`configs.content`，`AllowFunnel: true`）
 - 节点状态存于各 project 独立具名卷 `star-ecom-erp-<env>_tailscale-state`，重启不重新认证
 - 三个节点在管理台 Machines 中以 `star-ecom-erp-main/test/dev` 出现，tag 为 `tag:erp-funnel-xq`
 
@@ -78,11 +78,11 @@ push 到 `main` / `test` / `dev` 后，`ci.yml` 在镜像推送 GHCR 成功后�
 
 除上表外，还需配置 **Environment secret**（不是 repo secret）：Settings → Environments → 分别进入 main / test / dev → Add secret：
 
-| Environment | Secret 名称 | 值 |
-| --- | --- | --- |
-| main | `TS_AUTHKEY` | main 环境的 Tailscale auth key |
-| test | `TS_AUTHKEY` | test 环境的 Tailscale auth key |
-| dev | `TS_AUTHKEY` | dev 环境的 Tailscale auth key |
+| Environment | Secret 名称  | 值                             |
+| ----------- | ------------ | ------------------------------ |
+| main        | `TS_AUTHKEY` | main 环境的 Tailscale auth key |
+| test        | `TS_AUTHKEY` | test 环境的 Tailscale auth key |
+| dev         | `TS_AUTHKEY` | dev 环境的 Tailscale auth key  |
 
 deploy job 带 `environment: ${{ github.ref_name }}`，运行时自动解析到对应环境的值；未配置时部署直接报错中止（`environment secret TS_AUTHKEY is required`）。
 
