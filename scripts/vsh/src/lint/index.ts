@@ -118,7 +118,8 @@ async function runLint({ format, threads }: LintCommandOptions) {
     await runSerial([
       ['oxlint', ['--fix', '--type-aware', threadsArg]],
       ['oxfmt', [threadsArg]],
-      ['eslint', ['.', '--cache', '--fix']],
+      // content 策略:缓存条目按文件内容哈希失效,跨 checkout 仍可命中
+      ['eslint', ['.', '--cache', '--cache-strategy', 'content', '--fix']],
       ['stylelint', ['**/*.{vue,css,less,scss}', '--cache', '--fix']],
     ]);
     return;
@@ -127,7 +128,7 @@ async function runLint({ format, threads }: LintCommandOptions) {
   const commands: Command[] = [
     ['oxlint', ['--type-aware', threadsArg]],
     ['oxfmt', ['--check', threadsArg]],
-    ['eslint', ['.', '--cache']],
+    ['eslint', ['.', '--cache', '--cache-strategy', 'content']],
     ['stylelint', ['**/*.{vue,css,less,scss}', '--cache']],
   ];
 
