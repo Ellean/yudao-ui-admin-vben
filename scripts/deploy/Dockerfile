@@ -12,9 +12,10 @@ RUN npm i -g corepack && corepack enable
 WORKDIR /app
 
 # 先只拷依赖清单:lockfile 不变时 fetch 层跨 run/跨分支命中,install 退化为纯链接。
-# fetch 不能用 --mount=type=cache:cache-mount 不随 CACHED 层回放,新 builder 上
-# store 为空会让 --offline 安装失败,因此 store 直接落层快照
-COPY .npmrc pnpm-lock.yaml ./
+# pnpm-workspace.yaml 必须带头:catalogs 定义在里面,缺失会触发
+# ERR_PNPM_LOCKFILE_CONFIG_MISMATCH;fetch 不能用 --mount=type=cache(cache-mount
+# 不随 CACHED 层回放,新 builder 上 store 为空会让 --offline 安装失败)
+COPY .npmrc package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm fetch
 
 # copy source to workspace
