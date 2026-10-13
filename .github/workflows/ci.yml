@@ -95,7 +95,9 @@ jobs:
           REF: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
         run: |
-          TAGS="${IMAGE}:${REF}
+          # PR 的 ref_name 形如 10/merge，含 '/' 非法，需 sanitize（push:false 时 tag 仅作校验）
+          REF_TAG="${REF//\//-}"
+          TAGS="${IMAGE}:${REF_TAG}
           ${IMAGE}:${SHA}"
           if [ "${REF}" = "main" ]; then
             TAGS="${TAGS}
