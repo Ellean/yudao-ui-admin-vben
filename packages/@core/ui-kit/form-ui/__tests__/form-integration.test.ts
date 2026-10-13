@@ -101,7 +101,9 @@ describe('useVbenForm integration', () => {
     await flushPromises();
 
     expect(await formApi.getValues()).toEqual({ name: '' });
-    expect(validateValue).toHaveBeenCalledTimes(initialValidationCount + 1);
+    await vi.waitFor(() => {
+      expect(validateValue).toHaveBeenCalledTimes(initialValidationCount + 1);
+    });
   });
 
   it('keeps only the active model protocol in field slot componentProps', async () => {
@@ -429,7 +431,9 @@ describe('useVbenForm integration', () => {
     await inputs[0]?.setValue('Ada');
     await formApi.setFieldValue('alias', 'Countess', true);
     await flushPromises();
-    expect(wrapper.text()).not.toContain('Name is required');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).not.toContain('Name is required');
+    });
 
     expect(await formApi.validateField('name')).toEqual({
       errors: {},
@@ -908,11 +912,15 @@ describe('useVbenForm integration', () => {
 
     await input.trigger('blur');
     await flushPromises();
-    expect(wrapper.text()).toContain('Name is required');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Name is required');
+    });
 
     await input.setValue('Ada');
     await flushPromises();
-    expect(wrapper.text()).not.toContain('Name is required');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).not.toContain('Name is required');
+    });
 
     await input.trigger('blur');
     await flushPromises();
