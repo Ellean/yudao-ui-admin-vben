@@ -1015,8 +1015,12 @@ describe('useVbenForm integration', () => {
     await wrapper.get('form').trigger('submit');
     await flushPromises();
 
-    expect(onSubmit).toHaveBeenCalledOnce();
-    expect(onSubmit).toHaveBeenCalledWith(undefined);
+    // 原生 submit 走 TanStack 的异步校验链，CI 高负载下链路完成可能晚于
+    // flushPromises，轮询断言直到链路落定（曾在 dev push 上 flaky 0 次调用）
+    await vi.waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledOnce();
+      expect(onSubmit).toHaveBeenCalledWith(undefined);
+    });
   });
 
   it('calls handleReset with formatted values on reset button click', async () => {
