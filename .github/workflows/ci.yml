@@ -55,7 +55,7 @@ jobs:
             eslint-${{ runner.os }}-
 
       - name: Lint
-        run: pnpm run lint
+        run: pnpm run lint --parallel
 
   test:
     name: Test
