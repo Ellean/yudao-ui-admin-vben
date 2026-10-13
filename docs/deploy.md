@@ -10,9 +10,9 @@ push 到 `main` / `test` / `dev` 后，`ci.yml` 在镜像推送 GHCR 成功后�
 
 | 分支 | 镜像 tag | 宿主机端口 | 容器名 | compose project | 服务器目录 |
 | --- | --- | --- | --- | --- | --- |
-| main | main | 8010 | star-ecom-erp-web | star-ecom-erp-main | /opt/star-ecom-erp/main |
-| test | test | 8011 | star-ecom-erp-web-test | star-ecom-erp-test | /opt/star-ecom-erp/test |
-| dev | dev | 8012 | star-ecom-erp-web-dev | star-ecom-erp-dev | /opt/star-ecom-erp/dev |
+| main | main | 8010 | star-ecom-erp-web | star-ecom-erp-main | /home/edward/star-ecom-erp/main |
+| test | test | 8011 | star-ecom-erp-web-test | star-ecom-erp-test | /home/edward/star-ecom-erp/test |
+| dev | dev | 8012 | star-ecom-erp-web-dev | star-ecom-erp-dev | /home/edward/star-ecom-erp/dev |
 
 部署记录在 GitHub 仓库的 Environments（main/test/dev）中可查。
 
@@ -40,31 +40,31 @@ push 到 `main` / `test` / `dev` 后，`ci.yml` 在镜像推送 GHCR 成功后�
 | Secret | `TS_OAUTH_SECRET` | Tailscale OAuth client secret |
 | Secret | `DEPLOY_SSH_KEY` | 部署专用 ed25519 私钥（完整文件内容） |
 | Variable | `DEPLOY_HOST` | `xq-local.tail08f53.ts.net`（或 tailnet IP `100.73.52.43`） |
-| Variable | `DEPLOY_USER` | `root` |
-| Variable | `DEPLOY_PATH` | 可选，部署根目录，默认 `/opt/star-ecom-erp` |
+| Variable | `DEPLOY_USER` | `edward`（服务器登录用户，需在 docker 组） |
+| Variable | `DEPLOY_PATH` | 部署根目录，本仓库设置为 `/home/edward/star-ecom-erp`（未配置时代码默认 `/opt/star-ecom-erp`） |
 
 `DEPLOY_HOST` / `DEPLOY_USER` 未配置时 deploy job 会直接失败并给出提示。
 
 ### 3. 服务器一次性准备
 
-- Docker + compose plugin 可用（`docker compose version`）；CPU 架构需为 x86_64（镜像按 amd64 构建）。
-- 部署公钥追加到 authorized_keys（在能登录服务器的机器上执行）：
+- Docker + compose plugin 可用（`docker compose version`）；CPU 架构需为 x86_64（镜像按 amd64 构建）；部署用户在 `docker` 组（无需 sudo 执行 docker）。
+- 部署公钥追加到 authorized_keys（在能登录服务器的机器上执行，用户为 `edward`）：
 
   ```bash
-  ssh root@xq-local.tail08f53.ts.net \
+  ssh edward@xq-local.tail08f53.ts.net \
     'mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
      echo "<部署公钥内容>" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
   ```
 
 - 首次迁移：若服务器上还跑着旧的 `star-ecom-erp-web` 容器（早期手动 compose 部署），先清理避免容器名/端口冲突：`docker rm -f star-ecom-erp-web`
-- `/opt/star-ecom-erp/<分支>` 目录由 CI 自动创建，无需手工准备。
+- `/home/edward/star-ecom-erp/<分支>` 目录由 CI 自动创建，无需手工准备。
 
 ## 日常操作
 
 - **自动部署**：push（或合并 PR）到 main / test / dev 即自动部署对应环境；PR 事件不部署，`workflow_dispatch` 选到其他分支时跳过部署。
 - **手动部署**：Actions → CI → Run workflow → 选分支（仅 main/test/dev 触发部署）；inputs 可覆盖镜像内烘焙的后端地址，谨慎使用（会同步部署到对应环境）。
 - **回滚**：SSH 到服务器，将 `<目录>/.env` 的 `IMAGE_TAG` 改为旧构建的 sha tag，然后 `docker compose up -d`。注意 CI 下次部署会覆盖回分支 tag。
-- **查看日志**：`docker compose -f /opt/star-ecom-erp/<分支>/docker-compose.yml logs -f web`
+- **查看日志**：`docker compose -f /home/edward/star-ecom-erp/<分支>/docker-compose.yml logs -f web`
 
 ## 故障排查
 

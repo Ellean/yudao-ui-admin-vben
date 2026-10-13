@@ -1,7 +1,7 @@
 # Star E-Commerce ERP 前端运行时编排
 # 镜像由 GitHub Actions 构建并推送 GHCR；部署由 ci.yml 的 deploy job 自动完成：
 # push main/test/dev → CI 全绿 → push-image → 经 tailscale SSH 到服务器执行本文件
-# 服务器侧目录：/opt/star-ecom-erp/<分支>，本文件与 .env 由 CI 每次部署同步覆盖，勿手改
+# 服务器侧目录：/home/edward/star-ecom-erp/<分支>，本文件与 .env 由 CI 每次部署同步覆盖，勿手改
 # 可覆盖变量（CI 写入 .env）：IMAGE_TAG / HOST_PORT / CONTAINER_NAME
 # 手动更新（默认值即 main 环境）：docker compose pull && docker compose up -d
 # 如需本地从零构建，使用 docker-compose.build.yml
