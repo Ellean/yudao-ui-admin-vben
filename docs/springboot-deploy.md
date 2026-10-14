@@ -111,8 +111,8 @@ RUN pnpm install --frozen-lockfile --offline
 
 ### 1.8 通知（WeCom）
 
-- `wecom-pr.yml`：PR 生命周期（opened / reopened / ready_for_review / closed）推 PR 群。
-- ci.yml 内联 `notify` job：CI 结果（含部署结果、失败 job、耗时）按事件分流 PR 群 / Actions 群；标题自报「前端」端别，部署成功时附 Funnel 访问链接（`https://<TS_HOSTNAME>.tail08f53.ts.net`，取自 deploy job 的 `funnel_url` 输出）。
+- `wecom-pr.yml`：PR 生命周期（opened / reopened / ready_for_review / closed）推 PR 群，标题同样自报「前端」端别。
+- ci.yml 内联 `notify` job：CI 结果（含部署结果、失败 job、耗时）按事件分流 PR 群 / Actions 群；标题自报「前端」端别，部署成功时附 Funnel 访问链接（`https://<TS_HOSTNAME>.tail08f53.ts.net`，取自 deploy job 的 `funnel_url` 输出）。版式分块：标题 / 关联对象 / 元信息（灰字引用块）/ 结果行（失败 job 橙字、部署成功绿字）/ 耗时与运行入口，仅用企微 markdown 官方支持的语法。
 - webhook 存为 repo secret；未配置时告警跳过而非失败。
 
 ### 1.9 配置清单
@@ -637,7 +637,7 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             HEADLINE="${APP_SIDE} PR CI ${LABEL}"
             TITLE="**[#${PR_NUMBER} ${PR_TITLE}](${PR_URL})**"
-            WHO="${PR_AUTHOR} · \`${PR_HEAD}\` → \`${PR_BASE}\`"
+            WHO="${PR_AUTHOR} · ${PR_HEAD} → ${PR_BASE}"
           else
             SUBJECT=$(printf '%s\n' "$HEAD_MSG" | head -1)
             if [ -z "$SUBJECT" ]; then
@@ -648,21 +648,28 @@ jobs:
               HEADLINE="${APP_SIDE} · 手动触发 CI ${LABEL}"
             fi
             TITLE="**${SUBJECT}**"
-            WHO="${ACTOR} · \`${REF_NAME}\` · ${SHA:0:8}"
+            WHO="${ACTOR} · ${REF_NAME} · ${SHA:0:8}"
           fi
 
+          # 版式（仅用企微 markdown 支持的语法）：标题 / 关联对象 / 元信息（灰字引用块）/
+          # 结果行（失败 job 橙字、部署成功绿字）/ 耗时与运行入口
           {
             echo "## ${ICON} ${HEADLINE}"
+            echo ""
             echo "${TITLE}"
-            echo "👤 ${WHO}"
+            echo ""
+            echo "> <font color=\"comment\">👤 ${WHO}</font>"
             if [ -n "$FAILED" ]; then
-              echo "失败 job：${FAILED}"
+              echo ""
+              echo "⚠️ <font color=\"warning\">失败 job：${FAILED}</font>"
             fi
             # 后端 Funnel 为可选（§2.4），未开启时 funnel_url 输出已删，此处自动不展示链接
             if [ "$FAILURE" = "false" ] && [ "$DEPLOY_RESULT" = "success" ] && [ -n "$FUNNEL_URL" ]; then
-              echo "🚀 已部署 ${REF_NAME} 环境 · ${FUNNEL_URL}"
+              echo ""
+              echo "🚀 <font color=\"info\">已部署 ${REF_NAME} 环境</font>　[${FUNNEL_URL}](${FUNNEL_URL})"
             fi
-            echo "⏱ ${DUR} · [查看运行](${RUN_URL})"
+            echo ""
+            echo "⏱ 耗时 ${DUR} · [查看运行](${RUN_URL})"
           } > /tmp/wecom-msg.md
 
           PAYLOAD=$(jq -Rs '{msgtype: "markdown", markdown: {content: .}}' /tmp/wecom-msg.md)
@@ -672,7 +679,7 @@ jobs:
           echo "WeCom notified: ${RESP}"
 ```
 
-`wecom-pr.yml` 原样复制，无需修改。
+`wecom-pr.yml` 同样复制，把 `APP_SIDE` 改为「后端」。
 
 ### 2.6 一次性配置
 
